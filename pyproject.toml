@@ -7,9 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-beartype = "^0.17.0"
 jaxlib = {version = "0.4.23+cuda12.cudnn89", extras = ["cuda12_pip"], source = "jax-cuda-12"}
-jaxtyping = "^0.2.25"
 jax = {version = "0.4.23"}
 
 [tool.poetry.group.dev.dependencies]
@@ -23,9 +21,6 @@ priority = "explicit"
 [[tool.poetry.source]]
 name = "PyPI"
 priority = "default"
-
-[tool.pytest.ini_options]
-addopts = "--jaxtyping-packages=sp_sim,beartype.beartype"
 
 [build-system]
 requires = ["poetry-core"]

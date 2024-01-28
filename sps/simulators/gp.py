@@ -1,13 +1,19 @@
 import jax.numpy as jnp
-from jax import config, jit, random, vmap
+from jax import config, random, vmap, jit
 from dataclasses import dataclass
 from jax.random import PRNGKey
-from . import kernels, shared_types as T
+from . import kernels
 from .priors import Prior
-from jaxtyping import Float
+from jax.typing import ArrayLike
 
 # improves numerical stability for small lengthscales
 config.update("jax_enable_x64", True)
+
+
+# TODO:
+# test creation from hydra/omegaconf
+# implement kronecker method
+# implement MMD
 
 
 @dataclass
@@ -23,7 +29,7 @@ class GP:
 
     def simulate(
         self,
-        locations: T.Locations,
+        locations: ArrayLike,
         batch_size: int = 1,
         approx: bool = False,
     ):
@@ -37,12 +43,12 @@ class GP:
 
 
 def kronecker(
-    kernel: T.Kernel,
-    locations: T.Locations,
-    var: T.Variance,
-    ls: T.Lengthscale,
-    noise: Float = 1e-5,
-) -> T.LowerTriangular:
+    kernel: kernels.Kernel,
+    locations: ArrayLike,
+    var: float,
+    ls: float,
+    noise: float = 1e-5,
+) -> ArrayLike:
     # vmap(kernel, in_axes=(-1, None, None))
     # pass
     K = kernel(locations, locations, var, ls)
@@ -50,11 +56,11 @@ def kronecker(
 
 
 def cholesky(
-    kernel: T.Kernel,
-    locations: T.Locations,
-    var: T.Variance,
-    ls: T.Lengthscale,
-    noise: Float = 1e-5,
-) -> T.LowerTriangular:
+    kernel: kernels.Kernel,
+    locations: ArrayLike,
+    var: float,
+    ls: float,
+    noise: float = 1e-5,
+) -> ArrayLike:
     K = kernel(locations, locations, var, ls) + noise * jnp.eye(locations.size)
     return jnp.linalg.cholesky(K)

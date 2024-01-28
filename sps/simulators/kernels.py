@@ -1,10 +1,14 @@
 import jax.numpy as jnp
 from jax import jit
-from . import shared_types as T
+from collections.abc import Callable
+from jax.typing import ArrayLike
+
+
+Kernel = Callable[[ArrayLike, ArrayLike, float, float], ArrayLike]
 
 
 @jit
-def _prepare_dims(x: T.Locations, y: T.Locations) -> tuple[T.Locations, T.Locations]:
+def _prepare_dims(x: ArrayLike, y: ArrayLike) -> tuple[ArrayLike, ArrayLike]:
     if x.ndim == 1:
         x = x[:, None]
     if y.ndim == 1:
@@ -15,8 +19,8 @@ def _prepare_dims(x: T.Locations, y: T.Locations) -> tuple[T.Locations, T.Locati
 
 
 @jit
-def l2_dist_sq(x: T.Locations, y: T.Locations):
-    """L2 distance between two Locations arrays."""
+def l2_dist_sq(x: ArrayLike, y: ArrayLike) -> ArrayLike:
+    """L2 distance between two [..., D] arrays."""
     x, y = _prepare_dims(x, y)
     dsq = (x**2).sum(-1)[:, None] + (y**2).sum(-1).T - 2 * x @ y.T
     # can produce small (negative) values on the diagonal,
@@ -26,22 +30,22 @@ def l2_dist_sq(x: T.Locations, y: T.Locations):
 
 @jit
 def rbf(
-    x: T.Locations,
-    y: T.Locations,
-    variance: T.Variance,
-    lengthscale: T.Lengthscale,
-) -> T.Covariance:
+    x: ArrayLike,
+    y: ArrayLike,
+    variance: float,
+    lengthscale: float,
+) -> ArrayLike:
     """K(x, y) = variance * exp{-||x-y||^2 / (2 * lengthscale^2)}"""
     return variance * jnp.exp(-l2_dist_sq(x, y) / (2 * lengthscale**2))
 
 
 @jit
 def matern_3_2(
-    x: T.Locations,
-    y: T.Locations,
-    variance: T.Variance,
-    lengthscale: T.Lengthscale,
-) -> T.Covariance:
+    x: ArrayLike,
+    y: ArrayLike,
+    variance: float,
+    lengthscale: float,
+) -> ArrayLike:
     """K(x, y) = variance * (1 + √3 * ||x-y|| / lengthscale) * exp{-√3 * ||x-y|| / lengthscale}"""
     d = l2_dist_sq(x, y) ** (1 / 2)
     sqrt3 = 3.0 ** (1 / 2)
@@ -50,11 +54,11 @@ def matern_3_2(
 
 @jit
 def matern_5_2(
-    x: T.Locations,
-    y: T.Locations,
-    variance: T.Variance,
-    lengthscale: T.Lengthscale,
-) -> T.Covariance:
+    x: ArrayLike,
+    y: ArrayLike,
+    variance: float,
+    lengthscale: float,
+) -> ArrayLike:
     """K(x, y) = variance * (1 + √5 * ||x-y|| / lengthscale + 5/3 * ||x-y||^2 / lengthscale^2) * exp{-√5 * ||x-y|| / lengthscale}"""
     dsq = l2_dist_sq(x, y)
     d = jnp.sqrt(dsq)
