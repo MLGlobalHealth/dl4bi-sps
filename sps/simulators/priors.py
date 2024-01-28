@@ -2,10 +2,8 @@ from dataclasses import dataclass
 import jax.numpy as jnp
 from jax import random, jit
 from jax.tree_util import Partial
-from typing import Any, Sequence
-from jax.random import PRNGKey
 from jaxtyping import Float, Array, PRNGKeyArray, Num
-from . import shared_types as T
+from collections.abc import Sequence
 
 
 @dataclass
@@ -14,8 +12,14 @@ class Prior:
     kwargs: dict[str, Num]
 
     def __post_init__(self):
-        dist_func = getattr(globals(), self.dist, getattr(random, self.dist))
-        self.dist_func = jit(Partial(dist_func, **self.kwargs))
+        dist_func = globals().get(self.dist, getattr(random, self.dist, None))
+        self.dist_func = Partial(dist_func, **self.kwargs)
+
+    def __hash__(self):
+        return hash((self.dist, repr(self.kwargs)))
+
+    def __eq__(self, other):
+        return hash(self) == hash(other)
 
     def sample(self, key: PRNGKeyArray, shape: Sequence[int]) -> Float[Array, "..."]:
         return self.dist_func(key, shape=shape)

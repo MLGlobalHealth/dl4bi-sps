@@ -1,8 +1,8 @@
 from jaxtyping import Float, Array
 from collections.abc import Callable
 
-type Locations = Float[Array, "... D"]
-type Variance = Float
-type Lengthscale = Float
-type Covariance = Float[Array, "N N"]
-type Kernel = Callable[[Locations, Locations, Variance, Lengthscale], Covariance]
+Locations = Float[Array, "... D"]
+Variance = Float
+Lengthscale = Float
+Covariance = Float[Array, "N N"]
+Kernel = Callable[[Locations, Locations, Variance, Lengthscale], Covariance]

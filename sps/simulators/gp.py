@@ -2,10 +2,9 @@ import jax.numpy as jnp
 from jax import config, jit, random, vmap
 from dataclasses import dataclass
 from jax.random import PRNGKey
-from . import kernels
+from . import kernels, shared_types as T
 from .priors import Prior
 from jaxtyping import Float
-from . import shared_types as T
 
 # improves numerical stability for small lengthscales
 config.update("jax_enable_x64", True)
