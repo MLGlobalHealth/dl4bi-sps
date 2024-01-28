@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from jax import jit
+from jax import jit, Array
 from collections.abc import Callable
 from jax.typing import ArrayLike
 
