@@ -10,9 +10,9 @@ Kernel = Callable[[ArrayLike, ArrayLike, float, float], ArrayLike]
 @jit
 def _prepare_dims(x: ArrayLike, y: ArrayLike) -> tuple[ArrayLike, ArrayLike]:
     if x.ndim == 1:
-        x = x[:, None]
+        x = x[:, jnp.newaxis]
     if y.ndim == 1:
-        y = y[:, None]
+        y = y[:, jnp.newaxis]
     x = x.reshape(-1, x.shape[-1])
     y = y.reshape(-1, y.shape[-1])
     return x, y

@@ -1,8 +1,7 @@
-from sps.simulators.gp import GP
+from sps.gp import GP
 
 # from sps.metrics import maximum_mean_discrepancy
-from sps.simulators.kernels import rbf
-from sps.simulators.utils import build_grid
+from sps.utils import build_grid
 
 
 def test_gp_simulator():

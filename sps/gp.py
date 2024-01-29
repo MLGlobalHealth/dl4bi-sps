@@ -53,11 +53,16 @@ def kronecker(
     noise: float = 1e-5,
 ) -> ArrayLike:
     """Kronecker kernel covariance factorization."""
-    # TODO(danj): implement
-    # vmap(kernel, in_axes=(-1, None, None))
-    # pass
-    K = kernel(locations, locations, var, ls)
-    return jnp.linalg.cholesky(K)
+    # TODO(danj): not working correctly yet
+    # for dim=3 data
+    # g[..., 0][:, 0, 0] = g[:, 0, 0, 0]
+    # g[..., 1][0, :, 0] = g[0, :, 0, 1]
+    # g[..., 2][0, 0, :] = g[0, 0, :, 2]
+    noise_I = noise * jnp.eye(locations.size // locations.shape[-1])
+    locs = locations[..., jnp.newaxis, :]
+    Ks = vmap(kernel, in_axes=(-1, -1, None, None))(locs, locs, var, ls) + noise_I
+    Ls = jnp.linalg.cholesky(Ks)
+    return jnp.kron(*Ls)
 
 
 def cholesky(
