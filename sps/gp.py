@@ -55,9 +55,9 @@ def kronecker(
     """Kronecker kernel covariance factorization."""
     # TODO(danj): not working correctly yet
     # for dim=3 data
-    # g[..., 0][:, 0, 0] = g[:, 0, 0, 0]
-    # g[..., 1][0, :, 0] = g[0, :, 0, 1]
-    # g[..., 2][0, 0, :] = g[0, 0, :, 2]
+    # g[:, 0, 0, 0]
+    # g[0, :, 0, 1]
+    # g[0, 0, :, 2]
     noise_I = noise * jnp.eye(locations.size // locations.shape[-1])
     locs = locations[..., jnp.newaxis, :]
     Ks = vmap(kernel, in_axes=(-1, -1, None, None))(locs, locs, var, ls) + noise_I
