@@ -1,7 +1,8 @@
-import jax.numpy as jnp
 from collections.abc import Sequence
-from jax.typing import ArrayLike
+
+import jax.numpy as jnp
 from jax import Array
+from jax.typing import ArrayLike
 
 
 def build_grid(
@@ -15,7 +16,7 @@ def build_grid(
 def scale_grid(grid: ArrayLike, factor: int) -> ArrayLike:
     """Scales the `grid` of shape `[..., D]` by `factor` along all axes."""
     axes = [
-        jnp.linspace(grid[..., axis].min(), grid[..., axis].max(), int(n * factor))
-        for axis, n in enumerate(grid.shape[:-1])
+        jnp.linspace(grid[..., dim].min(), grid[..., dim].max(), int(n * factor))
+        for dim, n in enumerate(grid.shape[:-1])
     ]
     return jnp.stack(jnp.meshgrid(*axes, indexing="ij"), axis=-1)

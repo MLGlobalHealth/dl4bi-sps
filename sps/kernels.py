@@ -1,8 +1,8 @@
-import jax.numpy as jnp
-from jax import jit, Array
 from collections.abc import Callable
-from jax.typing import ArrayLike
 
+import jax.numpy as jnp
+from jax import jit
+from jax.typing import ArrayLike
 
 Kernel = Callable[[ArrayLike, ArrayLike, float, float], ArrayLike]
 

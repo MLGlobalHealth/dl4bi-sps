@@ -1,18 +1,15 @@
-import jax.numpy as jnp
-from jax import config, random, vmap, Array
 from dataclasses import dataclass
+
+import jax.numpy as jnp
+from jax import Array, config, lax, random, vmap
 from jax.random import PRNGKey
+from jax.typing import ArrayLike
+
 from . import kernels
 from .priors import Prior
-from jax.typing import ArrayLike
 
 # improves numerical stability for small lengthscales
 config.update("jax_enable_x64", True)
-
-
-# TODO:
-# implement kronecker method
-# implement MMD
 
 
 @dataclass
@@ -30,48 +27,51 @@ class GP:
 
     def simulate(
         self,
-        locations: ArrayLike,
+        locations: ArrayLike,  # [..., D]
         batch_size: int = 1,
         approx: bool = False,
     ) -> tuple[Array, Array, Array]:
         """Simulate `batch_size` realizations of the GP at `locations`."""
         self.key, rng_var, rng_ls, rng_z = random.split(self.key, 4)
+        factorize = vmap(kronecker if approx else cholesky, in_axes=(None, None, 0, 0))
+        num_locations = locations.size // locations.shape[-1]
         var = self.variance.sample(rng_var, (batch_size,))
         ls = self.lengthscale.sample(rng_ls, (batch_size,))
-        factorize = vmap(kronecker if approx else cholesky, in_axes=(None, None, 0, 0))
         Ls = factorize(self.kernel_func, locations, var, ls)
-        zs = random.normal(rng_z, shape=(batch_size, locations.size))
-        mu = vmap(jnp.dot)(Ls, zs)
+        zs = random.normal(rng_z, shape=(batch_size, num_locations))
+        mu = vmap(jnp.dot)(Ls, zs).reshape(-1, *locations.shape[:-1], 1)
         return var, ls, mu
 
 
 def kronecker(
     kernel: kernels.Kernel,
-    locations: ArrayLike,
+    locations: ArrayLike,  # [..., D]
     var: float,
     ls: float,
     noise: float = 1e-5,
-) -> ArrayLike:
+) -> Array:
     """Kronecker kernel covariance factorization."""
-    # TODO(danj): not working correctly yet
-    # for dim=3 data
-    # g[:, 0, 0, 0]
-    # g[0, :, 0, 1]
-    # g[0, 0, :, 2]
-    noise_I = noise * jnp.eye(locations.size // locations.shape[-1])
-    locs = locations[..., jnp.newaxis, :]
-    Ks = vmap(kernel, in_axes=(-1, -1, None, None))(locs, locs, var, ls) + noise_I
-    Ls = jnp.linalg.cholesky(Ks)
-    return jnp.kron(*Ls)
+    D, Ks = locations.shape[-1], []
+    start, stop = jnp.zeros(D, dtype=int), jnp.ones(D, dtype=int)
+    for dim, dim_size in enumerate(locations.shape[:-1]):
+        _stop = stop.at[dim].set(dim_size)
+        axis = lax.slice(locations[..., dim], start, _stop).squeeze()[..., jnp.newaxis]
+        Ks += [kernel(axis, axis, var, ls) + noise * jnp.eye(dim_size)]
+    L = jnp.linalg.cholesky(Ks[0])
+    for K_i in Ks[1:]:
+        L_i = jnp.linalg.cholesky(K_i)
+        L = jnp.kron(L, L_i)
+    return L
 
 
 def cholesky(
     kernel: kernels.Kernel,
-    locations: ArrayLike,
+    locations: ArrayLike,  # [..., D]
     var: float,
     ls: float,
     noise: float = 1e-5,
-) -> ArrayLike:
+) -> Array:
     """Cholesky kernel covariance factorization."""
-    K = kernel(locations, locations, var, ls) + noise * jnp.eye(locations.size)
+    num_locations = locations.size // locations.shape[-1]
+    K = kernel(locations, locations, var, ls) + noise * jnp.eye(num_locations)
     return jnp.linalg.cholesky(K)

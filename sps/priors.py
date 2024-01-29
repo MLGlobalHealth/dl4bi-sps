@@ -1,9 +1,9 @@
-from dataclasses import dataclass
-import jax.numpy as jnp
-from jax import random, Array
-from jax.tree_util import Partial
 from collections.abc import Sequence
-from jax.typing import ArrayLike
+from dataclasses import dataclass
+
+import jax.numpy as jnp
+from jax import Array, random
+from jax.tree_util import Partial
 
 
 @dataclass
@@ -23,7 +23,7 @@ class Prior:
     def __eq__(self, other):
         return hash(self) == hash(other)
 
-    def sample(self, key: Array, shape: Sequence[int]) -> ArrayLike:
+    def sample(self, key: Array, shape: Sequence[int]) -> Array:
         return self.dist_func(key, shape=shape)
 
 
@@ -33,7 +33,7 @@ def exponential(
     key: Array,
     lam: float,
     shape: Sequence[int],
-) -> ArrayLike:
+) -> Array:
     """Exponential parameterized by lambda `lam`."""
     return 1 / lam * random.exponential(key, shape)
 
@@ -42,6 +42,6 @@ def fixed(
     key: Array,
     value: float,
     shape: Sequence[int],
-) -> ArrayLike:
+) -> Array:
     """Fixed distribution."""
     return jnp.full(shape, value)
