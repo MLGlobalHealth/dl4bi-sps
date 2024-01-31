@@ -13,15 +13,16 @@ from sps.priors import Prior
 from sps.utils import build_grid
 
 # plot 5 samples from a collection of lengthscales
-locations = build_grid([{"start": 0, "stop": 1, "num": 50}])
+locations = build_grid([{"start": 0, "stop": 1, "num": 128}])
 batch_size = 5
 approx = True # approx uses Kronecker factorization instead of Cholesky
 lengthscales = [0.05, 0.1, 0.2, 0.3, 0.5]
-fig, axes = plt.subplots(1, len(lengthscales))
+fig, axes = plt.subplots(len(lengthscales), 1)
 for i, ls in enumerate(lengthscales):
-    gp = GP("matern_5_2", lengthscale=Prior("fixed", {"value": ls}))
-    var, ls, mu = gp.simulate(locations, batch_size, approx)
-    axes[i].plot(mu.T)
+    gp = GP("matern_3_2", lengthscale=Prior("fixed", {"value": ls}))
+    _var, _ls, mu = gp.simulate(locations, batch_size, approx)
+    axes[i].plot(mu.squeeze().T)
+    axes[i].set_title(f"ls={ls}")
 
 
 # create a simple (forever) dataloader
