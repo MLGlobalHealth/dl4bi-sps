@@ -1,6 +1,41 @@
 # Stochastic Process Simulators (sps)
 
-## Setup
+## Install
+- `pip install git+ssh://git@github.com/danjenson/sps.git`
+
+## Examples
+```python
+import matplotlib.pyplot as plt
+from jax.typing import ArrayLike
+
+from sps.gp import GP
+from sps.priors import Prior
+from sps.utils import build_grid
+
+# plot 5 samples from a collection of lengthscales
+locations = build_grid([{"start": 0, "stop": 1, "num": 50}])
+batch_size = 5
+approx = True # approx uses Kronecker factorization instead of Cholesky
+lengthscales = [0.05, 0.1, 0.2, 0.3, 0.5]
+fig, axes = plt.subplots(1, len(lengthscales))
+for i, ls in enumerate(lengthscales):
+    gp = GP("matern_5_2", lengthscale=Prior("fixed", {"value": ls}))
+    var, ls, mu = gp.simulate(locations, batch_size, approx)
+    axes[i].plot(mu.T)
+
+
+# create a simple (forever) dataloader
+def dataloader(gp: GP, locations: ArrayLike, batch_size: int, approx: bool):
+    while True:
+        yield gp.simulate(locations, batch_size, approx)
+
+
+gp = GP("matern_5_2", lengthscale=Prior("beta", {"a": 2.5, "b": 5}))
+loader = dataloader(gp, locations, batch_size, approx=True)
+var, ls, mu = next(loader)
+````
+
+## Development
 - Install Python 3.11:
     - Install `pyenv`: `curl https://pyenv.run | bash`
     - Copy the lines it says to your `~/.bashrc` and reload `source ~/.bashrc`
@@ -9,17 +44,3 @@
 - Install `poetry`: `curl -sSL https://install.python-poetry.org | python3 -`
 - Setup env: `cd sps && poetry install`
 - Run tests: `poetry run pytest`
-
-## Examples
-```python
-from sps.gp import GP
-from sps.priors import Prior
-from sps.utils import build_grid
-
-gp = GP("matern_5_2", lengthscale=Prior("beta", {"a": 2.5, "b": 6}))
-grid = build_grid([{"start": 0, "stop": 1, "num": 50}] * 2)  # 50x50 grid
-var, ls, mu = gp.simulate(grid, batch_size=16, approx=True)  # kronecker
-var.shape == (16,)
-ls.shape == (16,)
-mu.shape == (16, 50, 50, 1)
-````
