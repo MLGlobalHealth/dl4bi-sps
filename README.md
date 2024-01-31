@@ -1,7 +1,9 @@
 # Stochastic Process Simulators (sps)
 
 ## Install
-- `pip install git+ssh://git@github.com/danjenson/sps.git`
+```bash
+pip install git+ssh://git@github.com/MLGlobalHealth/sps.git
+```
 
 ## Examples
 ```python
