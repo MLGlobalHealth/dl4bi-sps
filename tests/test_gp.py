@@ -1,7 +1,11 @@
+from functools import reduce
+
 import jax.numpy as jnp
 import pytest
+from jax import random
+from jax.random import PRNGKey
 
-from sps.gp import GP, cholesky, kronecker
+from sps.gp import GP, _kronecker_Ls, _kronecker_mvprod, cholesky, kronecker
 from sps.kernels import rbf
 from sps.utils import build_grid
 
@@ -19,23 +23,32 @@ def test_kronecker_approx():
     assert jnp.allclose(L_ch, L_kr)
 
 
-def test_1D_gp_approx():
-    batch_size = 3
-    grid = build_grid()
-    gp = GP(seed=0)
-    _, _, mu = gp.simulate(grid, batch_size)
-    gp = GP(seed=0)  # reset seed
-    _, _, mu_approx = gp.simulate(grid, batch_size, approx=True)
+def test_kronecker_mvprod(seed=0):
+    var, ls, noise, key = 1.0, 0.1, 1e-5, PRNGKey(seed)
+    locations = build_grid()
+    num_locations = locations.size // locations.shape[-1]
+    Ls = _kronecker_Ls(rbf, locations, var, ls, noise)
+    L = reduce(jnp.kron, Ls)
+    z = random.normal(key, (num_locations,))
+    Lz = L @ z
+    Lz_mvprod = _kronecker_mvprod(Ls, z)
+    assert jnp.allclose(Lz, Lz_mvprod)
+
+
+def test_1D_gp_approx(seed=0):
+    batch_size, grid, gp = 3, build_grid(), GP()
+    key = PRNGKey(seed)
+    _, _, mu = gp.simulate(key, grid, batch_size)
+    _, _, mu_approx = gp.simulate(key, grid, batch_size, approx=True)
     assert jnp.allclose(mu, mu_approx)
 
 
 # TODO(danj): this is failing
 @pytest.mark.skip("Deviations in covariance matrices are magnified during sampling")
-def test_2D_gp_approx():
-    batch_size = 3
+def test_2D_gp_approx(seed=0):
+    batch_size, gp = 3, GP()
     grid = build_grid([{"start": 0, "stop": 1, "num": 50}] * 2)
-    gp = GP(seed=0)
-    _, _, mu = gp.simulate(grid, batch_size)
-    gp = GP(seed=0)  # reset seed
-    _, _, mu_approx = gp.simulate(grid, batch_size, approx=True)
+    key = PRNGKey(seed)
+    _, _, mu = gp.simulate(key, grid, batch_size)
+    _, _, mu_approx = gp.simulate(key, grid, batch_size, approx=True)
     assert jnp.allclose(mu, mu_approx)

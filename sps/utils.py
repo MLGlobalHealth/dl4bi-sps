@@ -13,7 +13,7 @@ def build_grid(
     return jnp.stack(jnp.meshgrid(*pts, indexing="ij"), axis=-1)
 
 
-def scale_grid(grid: ArrayLike, factor: int) -> ArrayLike:
+def scale_grid(grid: ArrayLike, factor: int) -> Array:
     """Scales the `grid` of shape `[..., D]` by `factor` along all axes."""
     axes = [
         jnp.linspace(grid[..., dim].min(), grid[..., dim].max(), int(n * factor))
