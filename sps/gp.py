@@ -32,14 +32,14 @@ class GP:
     ) -> tuple[Array, Array, Array]:
         """Simulate `batch_size` realizations of the GP at `locations`."""
         rng_var, rng_ls, rng_z = random.split(key, 3)
-        factorize = vmap(kronecker if approx else cholesky, in_axes=(None, None, 0, 0))
         num_locations = locations.size // locations.shape[-1]
         var = self.variance.sample(rng_var, (batch_size,))
         ls = self.lengthscale.sample(rng_ls, (batch_size,))
-        # TODO(danj): Algorithm 15 on p.152 of Saatci's thesis
-        Ls = factorize(self.kernel_func, locations, var, ls)
-        zs = random.normal(rng_z, shape=(batch_size, num_locations))
-        mu = vmap(kron_mvprod)(Ls, zs).reshape(-1, *locations.shape[:-1], 1)
+        z = random.normal(rng_z, shape=(batch_size, num_locations))
+        print(var[:5], ls[:5], z[:5])
+        vsample = vmap(kronecker if approx else cholesky, in_axes=(None, None, 0, 0, 0))
+        mu = vsample(self.kernel_func, locations, var, ls, z)
+        mu = mu.reshape(-1, *locations.shape[:-1], 1)  # batch x grid x 1
         return var, ls, mu
 
 
@@ -48,12 +48,14 @@ def cholesky(
     locations: ArrayLike,  # [..., D]
     var: float,
     ls: float,
+    z: Array,
     noise: float = 1e-5,
 ) -> Array:
     """Cholesky kernel covariance factorization."""
     num_locations = locations.size // locations.shape[-1]
     K = kernel(locations, locations, var, ls) + noise * jnp.eye(num_locations)
-    return jnp.linalg.cholesky(K)
+    L = jnp.linalg.cholesky(K)
+    return L @ z
 
 
 def kronecker(
@@ -87,10 +89,14 @@ def _kronecker_Ls(
 
 
 def _kronecker_mvprod(Ls: Sequence[Array], z: Array) -> Array:
-    """Linear Kronecker product of `Ls` with vector `z`."""
+    """Linear Kronecker product of `Ls` with vector `z`.
+
+    Source: https://mlg.eng.cam.ac.uk/pub/pdf/Saa11.pdf p137
+    """
     x, N = z, z.size
-    for L in Ls:
-        X = x.reshape(L.size, N // L.size)  # L.size = K_d.size?
+    for L in reversed(Ls):
+        D = L.shape[0]
+        X = x.reshape(D, N // D)
         Z = L @ X
-        x = Z.T.flatten()  # does this need to be column-wise?
+        x = Z.T.flatten()  # does this need to be column-wise? Z.flatten()
     return x
