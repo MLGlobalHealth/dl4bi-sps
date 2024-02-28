@@ -1,18 +1,29 @@
+import itertools as it
 from functools import reduce
 
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import pytest
 from jax import random
 from jax.random import PRNGKey
 
 from sps.gp import GP, _kronecker_Ls, _kronecker_mvprod
 from sps.kernels import rbf
+from sps.priors import Prior
 from sps.utils import build_grid
 
 
-def test_factorizations(var=1.0, ls=0.1, num_dims=2, dim_size=32, noise=1e-6):
+@pytest.mark.parametrize("ls", [0.1, 0.5, 1.0])
+def test_factorizations(
+    ls,
+    var=1.0,
+    num_dims=2,
+    dim_size=32,
+    noise=1e-6,
+):
     locations = build_grid([{"start": 0, "stop": 1, "num": dim_size}] * num_dims)
-    K = rbf(locations, locations, var, ls) + noise * jnp.eye(dim_size * dim_size)
+    num_locations = locations.size // locations.shape[-1]
+    K = rbf(locations, locations, var, ls) + noise * jnp.eye(num_locations)
     L_ch = jnp.linalg.cholesky(K)
     Ls_kr = _kronecker_Ls(rbf, locations, var, ls, noise / num_dims)
     L_kr = reduce(jnp.kron, Ls_kr)
@@ -20,37 +31,37 @@ def test_factorizations(var=1.0, ls=0.1, num_dims=2, dim_size=32, noise=1e-6):
     K_kr = L_kr @ L_kr.T
     assert jnp.allclose(K, K_ch)
     assert jnp.allclose(K, K_kr)
+    assert jnp.allclose(K_ch, K_kr)
 
 
-def test_kronecker_mvprod(seed=0, var=1.0, ls=0.1, num_dims=2, dim_size=32):
+@pytest.mark.parametrize("ls", [0.1, 0.5, 1.0])
+def test_kronecker_mvprod(
+    ls,
+    var=1.0,
+    num_dims=2,
+    dim_size=32,
+    seed=0,
+    noise=1e-6,
+):
     locations = build_grid([{"start": 0, "stop": 1, "num": dim_size}] * num_dims)
     num_locations = locations.size // locations.shape[-1]
-    Ls = _kronecker_Ls(rbf, locations, var, ls)
-    L = reduce(jnp.kron, Ls)
     z = random.normal(random.key(seed), (num_locations,))
-    Lz = L @ z
-    Lz_mvprod = _kronecker_mvprod(Ls, z)
-    assert jnp.allclose(Lz, Lz_mvprod)
+    K = rbf(locations, locations, var, ls) + noise * jnp.eye(num_locations)
+    Ls_kr = _kronecker_Ls(rbf, locations, var, ls, noise / num_dims)
+    Lz_kr = reduce(jnp.kron, Ls_kr) @ z
+    Lz_kr_mvprod = _kronecker_mvprod(Ls_kr, z)
+    assert jnp.allclose(Lz_kr, Lz_kr_mvprod)
+    # TODO(danj): fails -- one method is less stable
+    # Lz_ch = jnp.linalg.cholesky(K) @ z
+    # print(jnp.max(jnp.abs(Lz_kr - Lz_ch)))
+    # assert jnp.allclose(Lz_kr, Lz_ch)
 
 
-def test_1D_gp_approx(seed=0, dim_size=32, batch_size=3):
-    grid = build_grid([{"start": 0, "stop": 1, "num": dim_size}])
-    gp = GP()
-    key = PRNGKey(seed)
-    _, _, mu = gp.simulate(key, grid, batch_size)
-    _, _, mu_approx = gp.simulate(key, grid, batch_size, approx=True)
-    assert jnp.allclose(mu, mu_approx)
-
-
-def test_2D_gp_approx(seed=0, num_dims=2, dim_size=32, batch_size=3):
+@pytest.mark.parametrize("ls, num_dims", it.product([0.1, 0.5, 1.0], [1, 2]))
+def test_gp_approx(ls, num_dims, dim_size=32, batch_size=3, seed=0):
     locations = build_grid([{"start": 0, "stop": 1, "num": dim_size}] * num_dims)
-    gp = GP()
+    gp = GP(lengthscale=Prior("fixed", {"value": ls}))
     key = PRNGKey(seed)
     _, _, mu = gp.simulate(key, locations, batch_size)
     _, _, mu_approx = gp.simulate(key, locations, batch_size, approx=True)
-    for i in range(1, batch_size + 1):
-        plt.imshow(mu[i] - mu_approx[i], cmap="inferno")
-        plt.colorbar()
-        plt.savefig(f"mu_diff_2D_{i}.png")
-        plt.clf()
     assert jnp.allclose(mu, mu_approx)
