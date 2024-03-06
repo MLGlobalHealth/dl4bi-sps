@@ -12,6 +12,15 @@ Kernel = Callable[[ArrayLike, ArrayLike, float, float], ArrayLike]
 
 @jit
 def _prepare_dims(x: ArrayLike, y: ArrayLike) -> tuple[ArrayLike, ArrayLike]:
+    """Prepares dims for use in kernel functions.
+
+    Args:
+        x: Input array of size `[..., D]`.
+        y: Input array of size `[..., D]`.
+
+    Returns:
+        Two `[N, D]` dimensional arrays.
+    """
     if x.ndim == 1:
         x = x[:, jnp.newaxis]
     if y.ndim == 1:
@@ -23,7 +32,15 @@ def _prepare_dims(x: ArrayLike, y: ArrayLike) -> tuple[ArrayLike, ArrayLike]:
 
 @jit
 def l2_dist_sq(x: ArrayLike, y: ArrayLike) -> ArrayLike:
-    """L2 distance between two [..., D] arrays."""
+    """L2 distance between two [..., D] arrays.
+
+    Args:
+        x: Input array of size `[..., D]`.
+        y: Input array of size `[..., D]`.
+
+    Returns:
+        Matrix of all pairwise distances.
+    """
     x, y = _prepare_dims(x, y)
     dsq = (x**2).sum(-1)[:, None] + (y**2).sum(-1).T - 2 * x @ y.T
     # can produce small (negative) values on the diagonal,
@@ -35,11 +52,21 @@ def l2_dist_sq(x: ArrayLike, y: ArrayLike) -> ArrayLike:
 def rbf(
     x: ArrayLike,
     y: ArrayLike,
-    variance: float,
-    lengthscale: float,
+    var: float,
+    ls: float,
 ) -> ArrayLike:
-    """K(x, y) = variance * exp{-||x-y||^2 / (2 * lengthscale^2)}"""
-    return variance * jnp.exp(-l2_dist_sq(x, y) / (2 * lengthscale**2))
+    """Radial Basis kernel, aka Squared Exponential kernel.
+
+    K(x, y) = var * exp{-||x-y||^2 / (2 * ls^2)}
+
+    Args:
+        x: Input array of size `[..., D]`.
+        y: Input array of size `[..., D]`.
+
+    Returns:
+        A covariance matrix.
+    """
+    return var * jnp.exp(-l2_dist_sq(x, y) / (2 * ls**2))
 
 
 @jit
@@ -49,7 +76,17 @@ def matern_3_2(
     variance: float,
     lengthscale: float,
 ) -> ArrayLike:
-    """K(x, y) = variance * (1 + √3 * ||x-y|| / lengthscale) * exp{-√3 * ||x-y|| / lengthscale}"""
+    """Matern 3/2 kernel.
+
+    K(x, y) = var * (1 + √3 * ||x-y|| / ls) * exp{-√3 * ||x-y|| / ls}
+
+    Args:
+        x: Input array of size `[..., D]`.
+        y: Input array of size `[..., D]`.
+
+    Returns:
+        A covariance matrix.
+    """
     d = l2_dist_sq(x, y) ** (1 / 2)
     sqrt3 = 3.0 ** (1 / 2)
     return variance * (1 + sqrt3 * d / lengthscale) * jnp.exp(-sqrt3 * d / lengthscale)
@@ -62,7 +99,17 @@ def matern_5_2(
     variance: float,
     lengthscale: float,
 ) -> ArrayLike:
-    """K(x, y) = variance * (1 + √5 * ||x-y|| / lengthscale + 5/3 * ||x-y||^2 / lengthscale^2) * exp{-√5 * ||x-y|| / lengthscale}"""
+    """Matern 5/2 kernel.
+
+    K(x, y) = var * (1 + √5 * ||x-y|| / ls + 5/3 * ||x-y||^2 / ls^2) * exp{-√5 * ||x-y|| / ls}
+
+    Args:
+        x: Input array of size `[..., D]`.
+        y: Input array of size `[..., D]`.
+
+    Returns:
+        A covariance matrix.
+    """
     dsq = l2_dist_sq(x, y)
     d = jnp.sqrt(dsq)
     sqrt5 = jnp.sqrt(5.0)

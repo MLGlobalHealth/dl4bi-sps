@@ -8,7 +8,15 @@ from jax.tree_util import Partial
 
 @dataclass
 class Prior:
-    """Represents a prior using `jax.random` distributions."""
+    """Represents a prior using `jax.random` distributions.
+
+    Args:
+        dist: A distribution name from `jax.random` or `kernels` submodule.
+        kwargs: A dict of the parameters for the given distribution.
+
+    Returns:
+        An instance of the Prior dataclass.
+    """
 
     dist: str
     kwargs: dict[str, float]
@@ -24,6 +32,15 @@ class Prior:
         return hash(self) == hash(other)
 
     def sample(self, key: Array, shape: Sequence[int]) -> Array:
+        """Samples this prior.
+
+        Args:
+            key: A psuedo-random number generator from `jax.random`.
+            shape: Output shape of sample(s).
+
+        Returns:
+            A sample of shape `shape`.
+        """
         return self.dist_func(key, shape=shape)
 
 
@@ -34,7 +51,16 @@ def exponential(
     lam: float,
     shape: Sequence[int],
 ) -> Array:
-    """Exponential parameterized by lambda `lam`."""
+    """Exponential parameterized by lambda `lam`.
+
+    Args:
+        key: A psuedo-random number generator from `jax.random`.
+        lam: Lambda of exponential distribution.
+        shape: Output shape of sample(s).
+
+    Returns:
+        A sample of shape `shape`.
+    """
     return 1 / lam * random.exponential(key, shape)
 
 
@@ -43,5 +69,14 @@ def fixed(
     value: float,
     shape: Sequence[int],
 ) -> Array:
-    """Fixed distribution."""
+    """Fixed distribution.
+
+    Args:
+        key: A psuedo-random number generator from `jax.random`.
+        value: A fixed value to return for all samples.
+        shape: Output shape of sample(s).
+
+    Returns:
+        A fixed sample of shape `shape`.
+    """
     return jnp.full(shape, value)

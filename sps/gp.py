@@ -14,11 +14,22 @@ config.update("jax_enable_x64", True)
 
 @dataclass
 class GP:
-    """Gaussian Process simulator."""
+    """Gaussian Process simulator.
+
+    Args:
+        kernel: The name of a kernel from the `kernels` submodule.
+        var: The variance prior. Distributions include those in
+            `jax.random` as well as those in the `priors` submodule.
+        ls: The lengthscale prior. Distributions include those in
+            `jax.random` as well as those in the `priors` submodule.
+
+    Returns:
+        An instance of the GP dataclass.
+    """
 
     kernel: str = "matern_3_2"
-    variance: Prior = Prior("fixed", {"value": 1})
-    lengthscale: Prior = Prior("beta", {"a": 2.5, "b": 6.0})
+    var: Prior = Prior("fixed", {"value": 1})
+    ls: Prior = Prior("beta", {"a": 2.5, "b": 6.0})
 
     def __post_init__(self):
         self.kernel_func = getattr(kernels, self.kernel)
@@ -30,11 +41,24 @@ class GP:
         batch_size: int = 1,
         approx: bool = False,
     ) -> tuple[Array, Array, Array]:
-        """Simulate `batch_size` realizations of the GP at `locations`."""
+        """Simulate `batch_size` realizations of the GP at `locations`.
+
+        Args:
+            key: A psuedo-random number generator from `jax.random`.
+            locations: An array of locations where the last dimension
+                is the dimension of the data, i.e. if the data is 3
+                dimensional, the last dimension of the array is 3.
+            batch_size: The number of samples to generate.
+            approx: Approximate samples using Kronecker factorization,
+                otherwise use "exact" Cholesky decomposition.
+
+        Returns:
+            `var`, `ls`, and `mu` each of dim `batch_size`.
+        """
         rng_var, rng_ls, rng_z = random.split(key, 3)
         num_locations = locations.size // locations.shape[-1]
-        var = self.variance.sample(rng_var, (batch_size,))
-        ls = self.lengthscale.sample(rng_ls, (batch_size,))
+        var = self.var.sample(rng_var, (batch_size,))
+        ls = self.ls.sample(rng_ls, (batch_size,))
         z = random.normal(rng_z, shape=(batch_size, num_locations))
         print(var[:5], ls[:5], z[:5])
         vsample = vmap(kronecker if approx else cholesky, in_axes=(None, None, 0, 0, 0))
@@ -51,7 +75,23 @@ def cholesky(
     z: Array,
     noise: float = 1e-5,
 ) -> Array:
-    """Cholesky kernel covariance factorization."""
+    """Creates samples using Cholesky covariance factorization.
+
+    Args:
+        kernel: A kernel function.
+        locations: An array of locations where the last dimension
+            is the dimension of the data, i.e. if the data is 3
+            dimensional, the last dimension of the array is 3.
+        var: The variance parameter.
+        ls: The lengthscale parameter.
+        z: A random vector used to generate samples.
+        noise: Noise added for numerical stability in Cholesky
+            decomposition. Insufficiently large values will result
+            in nan values.
+
+    Returns:
+        `Lz`: samples from the kernel combined with random vector `z`.
+    """
     num_locations = locations.size // locations.shape[-1]
     K = kernel(locations, locations, var, ls) + noise * jnp.eye(num_locations)
     L = jnp.linalg.cholesky(K)
@@ -66,7 +106,25 @@ def kronecker(
     z: Array,
     noise: float = 1e-5,
 ) -> Array:
-    """Kronecker kernel covariance factorization."""
+    """Creates samples using Kronecker covariance factorization.
+
+    Source: https://proceedings.mlr.press/v37/flaxman15.html
+
+    Args:
+        kernel: A kernel function.
+        locations: An array of locations where the last dimension
+            is the dimension of the data, i.e. if the data is 3
+            dimensional, the last dimension of the array is 3.
+        var: The variance parameter.
+        ls: The lengthscale parameter.
+        z: A random vector used to generate samples.
+        noise: Noise added for numerical stability in Cholesky
+            decomposition. Insufficiently large values will result
+            in nan values.
+
+    Returns:
+        `Lz`: samples from the kernel combined with random vector `z`.
+    """
     Ls = _kronecker_Ls(kernel, locations, var, ls, noise)
     return _kronecker_mvprod(Ls, z)
 
@@ -78,6 +136,14 @@ def _kronecker_Ls(
     ls: float,
     noise: float = 1e-5,
 ) -> Sequence[Array]:
+    """Calculates Cholesky decomposition of each dimension in covariance matrix.
+
+    Args:
+        z: Random vector to be multiplied by combined L.
+
+    Returns:
+        `Ls`: Cholesky decompositions of each dimension in covariance matrix.
+    """
     D, Ls = locations.shape[-1], []
     start, stop = jnp.zeros(D, dtype=int), jnp.ones(D, dtype=int)
     for dim, dim_size in enumerate(locations.shape[:-1]):
@@ -92,11 +158,18 @@ def _kronecker_mvprod(Ls: Sequence[Array], z: Array) -> Array:
     """Linear Kronecker product of `Ls` with vector `z`.
 
     Source: https://mlg.eng.cam.ac.uk/pub/pdf/Saa11.pdf p137
+
+    Args:
+        Ls: Cholesky decompositions of each dimension.
+        z: Random vector to be multiplied by combined L.
+
+    Returns:
+        `Lz`: samples from the kernel combined with random vector `z`.
     """
     x, N = z, z.size
     for L in reversed(Ls):
         D = L.shape[0]
         X = x.reshape(D, N // D)
         Z = L @ X
-        x = Z.T.flatten()  # does this need to be column-wise? Z.flatten()
+        x = Z.T.flatten()
     return x
