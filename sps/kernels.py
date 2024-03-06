@@ -55,9 +55,9 @@ def rbf(
     var: float,
     ls: float,
 ) -> ArrayLike:
-    """Radial Basis kernel, aka Squared Exponential kernel.
+    r"""Radial Basis kernel, aka Squared Exponential kernel.
 
-    K(x, y) = var * exp{-||x-y||^2 / (2 * ls^2)}
+    $K(x, y) = \text{var}\cdot\exp\left(-\frac{\lVert x-y\rVert^2}{2\text{ls}^2}\right)$
 
     Args:
         x: Input array of size `[..., D]`.
@@ -76,9 +76,9 @@ def matern_3_2(
     variance: float,
     lengthscale: float,
 ) -> ArrayLike:
-    """Matern 3/2 kernel.
+    r"""Matern 3/2 kernel.
 
-    K(x, y) = var * (1 + √3 * ||x-y|| / ls) * exp{-√3 * ||x-y|| / ls}
+    $K(x, y) = \text{var}\cdot\left(1 + \frac{\sqrt{3}\lVert x-y\rVert}{\text{ls}}\right)\cdot\exp\left(-\frac{\sqrt{3}\lVert x-y\rVert}{\text{ls}}\right)$
 
     Args:
         x: Input array of size `[..., D]`.
@@ -99,9 +99,9 @@ def matern_5_2(
     variance: float,
     lengthscale: float,
 ) -> ArrayLike:
-    """Matern 5/2 kernel.
+    r"""Matern 5/2 kernel.
 
-    K(x, y) = var * (1 + √5 * ||x-y|| / ls + 5/3 * ||x-y||^2 / ls^2) * exp{-√5 * ||x-y|| / ls}
+    $K(x, y) = \text{var}\cdot\left(1 + \frac{\sqrt{5}\lVert x-y\rVert}{\text{ls}} + \frac{5}{3}\cdot\frac{\lVert x-y\rVert^2}{\text{ls}^2}\right)\cdot\exp\left(-\frac{\sqrt{5}\lVert x-y\rVert}{\text{ls}}\right)$
 
     Args:
         x: Input array of size `[..., D]`.

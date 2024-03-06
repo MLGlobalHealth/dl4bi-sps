@@ -5,6 +5,12 @@
 pip install git+ssh://git@github.com/MLGlobalHealth/sps.git
 ```
 
+## View Documentation
+```bash
+pip install pdoc
+pdoc --docformat google --math sps
+```
+
 ## Examples
 ```python
 import matplotlib.pyplot as plt
