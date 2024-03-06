@@ -60,7 +60,6 @@ class GP:
         var = self.var.sample(rng_var, (batch_size,))
         ls = self.ls.sample(rng_ls, (batch_size,))
         z = random.normal(rng_z, shape=(batch_size, num_locations))
-        print(var[:5], ls[:5], z[:5])
         vsample = vmap(kronecker if approx else cholesky, in_axes=(None, None, 0, 0, 0))
         mu = vsample(self.kernel_func, locations, var, ls, z)
         mu = mu.reshape(-1, *locations.shape[:-1], 1)  # batch x grid x 1
