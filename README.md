@@ -5,9 +5,11 @@
 pip install git+ssh://git@github.com/MLGlobalHealth/sps.git
 ```
 
-## View Documentation
+## View Documentation (Locally)
 ```bash
 pip install pdoc
+git clone git@github.com:danjenson/sps.git
+cd sps
 pdoc --docformat google --math sps
 ```
 
@@ -57,11 +59,11 @@ locations = build_grid([{"start": 0, "stop": 1, "num": 64}] * 2) # 64x64 grid
 ````
 
 ## Development
-- Install Python 3.11 (or later):
+- Install Python 3.12 (or later):
     - Install `pyenv`: `curl https://pyenv.run | bash`
     - Copy the lines it says to your `~/.bashrc` and reload `source ~/.bashrc`
-    - Install Python 3.11: `pyenv install 3.11`
-    - Make Python 3.11 your default: `pyenv global 3.11`
+    - Install Python 3.12: `pyenv install 3.12`
+    - Make Python 3.12 your default: `pyenv global 3.12`
 - Install `poetry`: `curl -sSL https://install.python-poetry.org | python3 -`
 - Setup env: `cd sps && poetry install`
 - Run tests: `poetry run pytest`
