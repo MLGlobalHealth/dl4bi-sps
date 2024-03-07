@@ -31,7 +31,7 @@ class Prior:
     def __eq__(self, other):
         return hash(self) == hash(other)
 
-    def sample(self, key: Array, shape: Sequence[int]) -> Array:
+    def sample(self, key: Array, shape: Sequence[int] = (1,)) -> Array:
         """Samples this prior.
 
         Args:

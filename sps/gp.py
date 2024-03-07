@@ -40,30 +40,47 @@ class GP:
         locations: ArrayLike,  # [..., D]
         batch_size: int = 1,
         approx: bool = False,
-    ) -> tuple[Array, Array, Array]:
-        """Simulate `batch_size` realizations of the GP at `locations`.
+    ) -> tuple[Array, Array, Array, Array]:
+        r"""Simulate `batch_size` realizations of the GP at `locations`.
+
+        Each batch is sampled as follows:
+
+        $
+        \begin{aligned}
+        \text{var}&\sim p_\text{var}(\cdot) \\\\
+        \text{ls}&\sim p_\text{ls}(\cdot) \\\\
+        \mathbf{z}&\sim \mathcal{N}(0, 1, \text{shape}=(\text{batch\_size}, \text{num\_locations})) \\\\
+        \mathbf{K}&=\text{kernel}(\text{locations},\text{locations},\text{var},\text{ls}) \\\\
+        \mathbf{L}&=\text{Cholesky}(\mathbf{K}) \\\\
+        \mathbf{f}&=\mathbf{Lz} \\\\
+        \end{aligned}
+        $
+
+        This sampling process is designed to amortize the cost of
+        the Cholesky decomposition, which is $\mathcal{O}(n^3)$,
+        by sampling `(batch_size, num_locations)` `z`s for each `L`.
 
         Args:
             key: A psuedo-random number generator from `jax.random`.
             locations: An array of locations where the last dimension
-                is the dimension of the data, i.e. if the data is 3
-                dimensional, the last dimension of the array is 3.
+                is the dimension of single location, i.e. if a location
+                is 3 dimensional, the last dimension of the array is 3.
             batch_size: The number of samples to generate.
             approx: Approximate samples using Kronecker factorization,
                 otherwise use "exact" Cholesky decomposition.
 
         Returns:
-            `var`, `ls`, and `mu` each of dim `batch_size`.
+            `var`, `ls`, `z`, and `f`.
         """
         rng_var, rng_ls, rng_z = random.split(key, 3)
         num_locations = locations.size // locations.shape[-1]
-        var = self.var.sample(rng_var, (batch_size,))
-        ls = self.ls.sample(rng_ls, (batch_size,))
+        var = self.var.sample(rng_var)
+        ls = self.ls.sample(rng_ls)
         z = random.normal(rng_z, shape=(batch_size, num_locations))
-        vsample = vmap(kronecker if approx else cholesky, in_axes=(None, None, 0, 0, 0))
-        mu = vsample(self.kernel_func, locations, var, ls, z)
-        mu = mu.reshape(-1, *locations.shape[:-1], 1)  # batch x grid x 1
-        return var, ls, mu
+        vsample = vmap(kronecker if approx else cholesky, in_axes=[None] * 4 + [0])
+        f = vsample(self.kernel_func, locations, var, ls, z)  # vectorize over z
+        f = f.reshape(-1, *locations.shape[:-1], 1)  # batch x grid x 1
+        return var, ls, z, f
 
 
 def cholesky(
@@ -79,8 +96,8 @@ def cholesky(
     Args:
         kernel: A kernel function.
         locations: An array of locations where the last dimension
-            is the dimension of the data, i.e. if the data is 3
-            dimensional, the last dimension of the array is 3.
+            is the dimension of single location, i.e. if a location
+            is 3 dimensional, the last dimension of the array is 3.
         var: The variance parameter.
         ls: The lengthscale parameter.
         z: A random vector used to generate samples.
@@ -89,7 +106,7 @@ def cholesky(
             in nan values.
 
     Returns:
-        `Lz`: samples from the kernel combined with random vector `z`.
+        `Lz`: samples from the kernel combined with a random vector `z`.
     """
     num_locations = locations.size // locations.shape[-1]
     K = kernel(locations, locations, var, ls) + noise * jnp.eye(num_locations)
@@ -112,8 +129,8 @@ def kronecker(
     Args:
         kernel: A kernel function.
         locations: An array of locations where the last dimension
-            is the dimension of the data, i.e. if the data is 3
-            dimensional, the last dimension of the array is 3.
+            is the dimension of single location, i.e. if a location
+            is 3 dimensional, the last dimension of the array is 3.
         var: The variance parameter.
         ls: The lengthscale parameter.
         z: A random vector used to generate samples.
@@ -122,7 +139,7 @@ def kronecker(
             in nan values.
 
     Returns:
-        `Lz`: samples from the kernel combined with random vector `z`.
+        `Lz`: samples from the kernel combined with a random vector `z`.
     """
     Ls = _kronecker_Ls(kernel, locations, var, ls, noise)
     return _kronecker_mvprod(Ls, z)

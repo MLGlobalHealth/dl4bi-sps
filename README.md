@@ -25,15 +25,15 @@ from sps.utils import build_grid
 
 # plot 5 samples from a collection of lengthscales
 locations = build_grid([{"start": 0, "stop": 1, "num": 128}])
-batch_size = 5
+batch_size = 64
 approx = True # approx uses Kronecker factorization instead of Cholesky
 lengthscales = [0.05, 0.1, 0.2, 0.3, 0.5]
 fig, axes = plt.subplots(len(lengthscales), 1)
 key = random.PRNGKey(42)
 for i, ls in enumerate(lengthscales):
     gp = GP("matern_3_2", ls=Prior("fixed", {"value": ls}))
-    _var, _ls, mu = gp.simulate(key, locations, batch_size, approx)
-    axes[i].plot(mu.squeeze().T)
+    _var, _ls, _z, f = gp.simulate(key, locations, batch_size, approx)
+    axes[i].plot(f.squeeze().T)
     axes[i].set_title(f"ls={ls}")
 
 
@@ -46,7 +46,7 @@ def dataloader(key, gp, locations, batch_size=64, approx=False):
 
 gp = GP("matern_5_2", ls=Prior("beta", {"a": 2.5, "b": 5}))
 loader = dataloader(key, gp, locations, batch_size, approx=True)
-var, ls, mu = next(loader)
+var, ls, z, f = next(loader)
 
 
 # build a 2D grid, 64x64 grid
@@ -55,8 +55,9 @@ locations = build_grid([{"start": 0, "stop": 1, "num": 64}] * 2)
 
 # within IPython, speed test Kronecker (approx) vs. Cholesky methods 
 key = random.PRNGKey(42)
-%timeit gp.simulate(key, locations, batch_size, approx=True) # ~7 ms
-%timeit gp.simulate(key, locations, batch_size, approx=False) # ~136 ms
+batch_size = 1024
+%timeit gp.simulate(key, locations, batch_size, approx=True) # ~6 ms
+%timeit gp.simulate(key, locations, batch_size, approx=False) # ~57 ms
 ````
 
 ## Development

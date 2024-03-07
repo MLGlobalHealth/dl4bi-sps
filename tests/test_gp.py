@@ -60,8 +60,8 @@ def test_kronecker_mvprod(
 @pytest.mark.parametrize("ls, num_dims", it.product([0.1, 0.5, 1.0], [1, 2]))
 def test_gp_approx(ls, num_dims, dim_size=32, batch_size=3, seed=0):
     locations = build_grid([{"start": 0, "stop": 1, "num": dim_size}] * num_dims)
-    gp = GP(lengthscale=Prior("fixed", {"value": ls}))
+    gp = GP(ls=Prior("fixed", {"value": ls}))
     key = PRNGKey(seed)
-    _, _, mu = gp.simulate(key, locations, batch_size)
-    _, _, mu_approx = gp.simulate(key, locations, batch_size, approx=True)
-    assert jnp.allclose(mu, mu_approx)
+    _, _, _, f = gp.simulate(key, locations, batch_size)
+    _, _, _, f_approx = gp.simulate(key, locations, batch_size, approx=True)
+    assert jnp.allclose(f, f_approx)
