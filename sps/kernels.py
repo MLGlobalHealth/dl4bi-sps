@@ -32,7 +32,7 @@ def _prepare_dims(x: ArrayLike, y: ArrayLike) -> tuple[ArrayLike, ArrayLike]:
 
 @jit
 def l2_dist_sq(x: ArrayLike, y: ArrayLike) -> ArrayLike:
-    """L2 distance between two [..., D] arrays.
+    r"""L2 distance between two [..., D] arrays.
 
     Args:
         x: Input array of size `[..., D]`.
@@ -42,10 +42,7 @@ def l2_dist_sq(x: ArrayLike, y: ArrayLike) -> ArrayLike:
         Matrix of all pairwise distances.
     """
     x, y = _prepare_dims(x, y)
-    dsq = (x**2).sum(-1)[:, None] + (y**2).sum(-1).T - 2 * x @ y.T
-    # can produce small (negative) values on the diagonal,
-    # e.g. distance d(x_i, x_i) = -1.2384e-8, so fill with 0s
-    return jnp.fill_diagonal(dsq, 0, inplace=False)
+    return (x**2).sum(-1)[:, None] + (y**2).sum(-1).T - 2 * x @ y.T
 
 
 @jit
