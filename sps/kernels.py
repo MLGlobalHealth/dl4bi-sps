@@ -19,7 +19,7 @@ def _prepare_dims(x: ArrayLike, y: ArrayLike) -> tuple[ArrayLike, ArrayLike]:
         y: Input array of size `[..., D]`.
 
     Returns:
-        Two `[N, D]` dimensional arrays.
+        `[N_x, D]` and `[N_y, D]` arrays.
     """
     if x.ndim == 1:
         x = x[:, jnp.newaxis]
@@ -38,11 +38,16 @@ def l2_dist_sq(x: ArrayLike, y: ArrayLike) -> ArrayLike:
         x: Input array of size `[..., D]`.
         y: Input array of size `[..., D]`.
 
+    Uses $\mathbf{D}=\mathbf{\hat{x}}\mathbf{1}^\intercal_{N_y}-2\mathbf{XY}^\intercal-1_{N_x}\mathbf{\hat{y}}^\intercal$
+    from Probabilistic Machine Learning by Kevin Murphy, p.245.
+
     Returns:
         Matrix of all pairwise distances.
     """
     x, y = _prepare_dims(x, y)
-    return (x**2).sum(-1)[:, None] + (y**2).sum(-1).T - 2 * x @ y.T
+    _1_N_x, _1_N_y = jnp.ones(x.shape[0]), jnp.ones(y.shape[0])
+    x_hat, y_hat = (x**2).sum(-1), (y**2).sum(-1)
+    return jnp.outer(x_hat, _1_N_y) - 2 * x @ y.T + jnp.outer(_1_N_x, y_hat)
 
 
 @jit
