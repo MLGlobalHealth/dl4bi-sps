@@ -10,7 +10,7 @@ pip install git+ssh://git@github.com/MLGlobalHealth/sps.git
 ## View Documentation (Locally)
 ```bash
 pip install pdoc
-git clone git@github.com:danjenson/sps.git
+git clone git@github.com:MLGlobalHealth/sps.git
 cd sps
 pdoc --docformat google --math sps
 ```
