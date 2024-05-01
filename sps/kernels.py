@@ -72,6 +72,28 @@ def rbf(
 
 
 @jit
+def periodic(
+    x: ArrayLike,
+    y: ArrayLike,
+    var: float,
+    ls: float,
+    period: float = 2 * jnp.pi,
+) -> ArrayLike:
+    r"""Periodic kernel.
+
+    $K(x, y) = \text{var}\cdot\exp\left(-\frac{2\sin^2\frac{\left(\lVert x-y\rVert\right)}{\text{period}}}{2\text{ls}^2}\right)$
+
+    Args:
+        x: Input array of size `[..., D]`.
+        y: Input array of size `[..., D]`.
+
+    Returns:
+        A covariance matrix.
+    """
+    return var * jnp.exp(-2 / ls**2 * jnp.sin(jnp.pi * jnp.abs(x - y) / period) ** 2)
+
+
+@jit
 def matern_3_2(
     x: ArrayLike,
     y: ArrayLike,
