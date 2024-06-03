@@ -2,13 +2,11 @@ import itertools as it
 from functools import reduce
 
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import pytest
 from jax import random
-from jax.random import PRNGKey
 
 from sps.gp import GP, _kronecker_Ls, _kronecker_mvprod
-from sps.kernels import rbf
+from sps.kernels import matern_3_2, matern_5_2, periodic, rbf
 from sps.priors import Prior
 from sps.utils import build_grid
 
@@ -57,11 +55,20 @@ def test_kronecker_mvprod(
     # assert jnp.allclose(Lz_kr, Lz_ch)
 
 
+@pytest.mark.parametrize("kernel", [matern_3_2, matern_5_2, periodic, rbf])
+def test_gp(kernel, num_dims=1, dim_size=32, batch_size=3, seed=0):
+    locations = build_grid([{"start": 0, "stop": 1, "num": dim_size}] * num_dims)
+    gp = GP(kernel)
+    key = random.key(seed)
+    _, _, _, f = gp.simulate(key, locations, batch_size)
+    assert jnp.isfinite(f).all()
+
+
 @pytest.mark.parametrize("ls, num_dims", it.product([0.1, 0.5, 1.0], [1, 2]))
 def test_gp_approx(ls, num_dims, dim_size=32, batch_size=3, seed=0):
     locations = build_grid([{"start": 0, "stop": 1, "num": dim_size}] * num_dims)
     gp = GP(ls=Prior("fixed", {"value": ls}))
-    key = PRNGKey(seed)
+    key = random.key(seed)
     _, _, _, f = gp.simulate(key, locations, batch_size)
     _, _, _, f_approx = gp.simulate(key, locations, batch_size, approx=True)
     assert jnp.allclose(f, f_approx)

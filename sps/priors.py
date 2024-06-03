@@ -44,7 +44,7 @@ class Prior:
         return self.dist_func(key, shape=shape)
 
 
-# JAX doesn't have a lambda parameterized exponential (28-01-2024)
+# JAX doesn't have a lambda parameterized exponential (2024-01-28)
 # https://jax.readthedocs.io/en/latest/_autosummary/jax.random.exponential.html
 def exponential(
     key: Array,
