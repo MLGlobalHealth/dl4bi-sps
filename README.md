@@ -29,7 +29,7 @@ from sps.kernels import matern_3_2, matern_5_2
 
 
 # plot 5 samples from a collection of lengthscales
-locations = build_grid([{"start": 0, "stop": 1, "num": 128}])
+s = build_grid([{"start": 0, "stop": 1, "num": 128}])
 batch_size = 64
 approx = True # approx uses Kronecker factorization instead of Cholesky
 lengthscales = [0.05, 0.1, 0.2, 0.3, 0.5]
@@ -38,7 +38,7 @@ key = random.key(42)
 for i, ls in enumerate(lengthscales):
     gp = GP(matern_3_2, ls=Prior("fixed", {"value": ls}))
     _var, _ls, _z, f = gp.simulate(key, locations, batch_size, approx)
-    axes[i].plot(f.squeeze().T)
+    axes[i].plot(s, f.squeeze().T)
     axes[i].set_title(f"ls={ls}")
 
 
