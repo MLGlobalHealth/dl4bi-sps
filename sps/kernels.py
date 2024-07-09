@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import jax.numpy as jnp
 from jax import config, jit, vmap
 from jax.typing import ArrayLike
@@ -58,8 +60,13 @@ def l2_dist(x: ArrayLike, y: ArrayLike) -> ArrayLike:
         Matrix of all pairwise distances.
     """
     x, y = _prepare_dims(x, y)
-    diff = vmap(vmap(jnp.subtract, (None, 0)), (0, None))(x, y)
+    diff = outer_subtract(x, y)
     return jnp.linalg.norm(diff, axis=-1)
+
+
+@jit
+def outer_subtract(x: ArrayLike, y: ArrayLike) -> ArrayLike:
+    return vmap(vmap(jnp.subtract, (None, 0)), (0, None))(x, y)
 
 
 @jit
