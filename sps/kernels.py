@@ -100,7 +100,7 @@ def periodic(
 ) -> ArrayLike:
     r"""Periodic kernel.
 
-    $K(x, y) = \text{var}\cdot\exp\left(-\frac{2\sin^2\frac{\left(\lVert x-y\rVert\right)}{\text{period}}}{2\text{ls}^2}\right)$
+    $K(x, y) = \text{var}\cdot\exp\left(-\frac{2\sin^2\frac{\left(\lVert x-y\rVert\right)}{\text{period}}}{\text{ls}^2}\right)$
 
     Args:
         x: Input array of size `[..., D]`.
