@@ -80,14 +80,15 @@ class GP:
         ls = self.ls.sample(rng_ls)
         z = random.normal(rng_z, shape=(batch_size, num_locations))
         kernel = self.kernel
-        period = None
+        period = jnp.array(jnp.inf)
         if self.kernel.__name__ == "periodic":
             period = self.period.sample(rng_period)
             kernel = Partial(self.kernel, period=period)
         sample = kronecker if approx else cholesky
-        with enable_x64():
-            f = sample(kernel, locations, var, ls, z, self.jitter)
-            f = jnp.float32(f)  # TODO(danj): make this optional
+        f64 = jit(lambda x: jnp.float64(x))
+        with enable_x64():  # TODO(danj): make this optional
+            f = sample(kernel, f64(locations), f64(var), f64(ls), f64(z), self.jitter)
+            f = jnp.float32(f)
         f = f.reshape(-1, *locations.shape[:-1], 1)  # batch x grid x 1
         return f, var, ls, period, z
 
