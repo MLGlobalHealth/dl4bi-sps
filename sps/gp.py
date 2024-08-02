@@ -21,7 +21,7 @@ class GP:
         ls: The lengthscale prior. Distributions include those in
             `jax.random` as well as those in the `priors` submodule.
         period: Used only for periodic kernels.
-        noise: Noise added to diagonal of covariance matrix to numerically
+        jitter: Jitter added to diagonal of covariance matrix to numerically
             stabilize decomposition.
 
     Returns:
@@ -32,7 +32,7 @@ class GP:
     var: Prior = Prior("fixed", {"value": 1})
     ls: Prior = Prior("beta", {"a": 2.5, "b": 6.0})
     period: Prior = Prior("fixed", {"value": 1.0})
-    noise: float = 1e-3
+    jitter: float = 1e-5
 
     def simulate(
         self,
@@ -84,7 +84,7 @@ class GP:
             period = self.period.sample(rng_period)
             kernel = Partial(self.kernel, period=period)
         sample = kronecker if approx else cholesky
-        f = sample(kernel, locations, var, ls, z)  # vectorize over z
+        f = sample(kernel, locations, var, ls, z, self.jitter)
         f = f.reshape(-1, *locations.shape[:-1], 1)  # batch x grid x 1
         return f, var, ls, period, z
 
@@ -95,7 +95,7 @@ def cholesky(
     var: Array,
     ls: Array,
     z: Array,  # [B, L]
-    noise: float = 1e-3,
+    noise: float = 1e-5,
 ) -> Array:
     """Creates samples using Cholesky covariance factorization.
 
@@ -126,7 +126,7 @@ def kronecker(
     var: Array,
     ls: Array,
     z: Array,  # [B, L]
-    noise: float = 1e-3,
+    noise: float = 1e-5,
 ) -> Array:
     """Creates samples using Kronecker covariance factorization.
 
