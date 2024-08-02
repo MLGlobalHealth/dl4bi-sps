@@ -1,7 +1,6 @@
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-import jax
 import jax.numpy as jnp
 from jax import Array, jit, lax, random, vmap
 from jax.tree_util import Partial
@@ -22,6 +21,8 @@ class GP:
         ls: The lengthscale prior. Distributions include those in
             `jax.random` as well as those in the `priors` submodule.
         period: Used only for periodic kernels.
+        noise: Noise added to diagonal of covariance matrix to numerically
+            stabilize decomposition.
 
     Returns:
         An instance of the GP dataclass.
@@ -31,6 +32,7 @@ class GP:
     var: Prior = Prior("fixed", {"value": 1})
     ls: Prior = Prior("beta", {"a": 2.5, "b": 6.0})
     period: Prior = Prior("fixed", {"value": 1.0})
+    noise: float = 1e-3
 
     def simulate(
         self,
@@ -90,10 +92,10 @@ class GP:
 def cholesky(
     kernel: Callable,
     locations: ArrayLike,  # [..., D]
-    var: float,
-    ls: float,
+    var: Array,
+    ls: Array,
     z: Array,  # [B, L]
-    noise: float = 1e-5,
+    noise: float = 1e-3,
 ) -> Array:
     """Creates samples using Cholesky covariance factorization.
 
@@ -114,7 +116,6 @@ def cholesky(
     """
     num_locations = locations.size // locations.shape[-1]
     K = kernel(locations, locations, var, ls) + noise * jnp.eye(num_locations)
-    jax.debug.print("{}", K)
     L = lax.linalg.cholesky(K)
     return jnp.einsum("ij,bj->bi", L, z)
 
@@ -122,10 +123,10 @@ def cholesky(
 def kronecker(
     kernel: Callable,
     locations: ArrayLike,  # [..., D]
-    var: float,
-    ls: float,
+    var: Array,
+    ls: Array,
     z: Array,  # [B, L]
-    noise: float = 1e-5,
+    noise: float = 1e-3,
 ) -> Array:
     """Creates samples using Kronecker covariance factorization.
 
