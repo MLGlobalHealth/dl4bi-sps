@@ -1,11 +1,6 @@
-from collections.abc import Callable
-
 import jax.numpy as jnp
-from jax import config, jit, vmap
+from jax import jit, vmap
 from jax.typing import ArrayLike
-
-# improves numerical stability for small lengthscales
-config.update("jax_enable_x64", True)
 
 
 @jit

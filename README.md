@@ -61,6 +61,14 @@ s = build_grid([{"start": 0, "stop": 1, "num": 64}] * 2) # 64x64 grid
 %timeit gp.simulate(key, s, batch_size, approx=False) # ~57 ms
 ````
 
+## Gotchas
+- Small lengthscales can cause numerical instability; enabiling 64-bit floating
+operations can often help, but be warned that this will double memory usage.
+```python
+from jax import config
+config.update("jax_enable_x64", True)
+```
+
 ## Development Setup
 - Install Python 3.12 with `pyenv`:
     - Install `pyenv`: `curl https://pyenv.run | bash`
