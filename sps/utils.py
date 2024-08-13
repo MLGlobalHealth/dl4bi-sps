@@ -7,6 +7,7 @@ from jax.typing import ArrayLike
 
 def build_grid(
     axes: Sequence[dict[str, float]] = [{"start": 0, "stop": 1, "num": 128}],
+    dtype: jnp.dtype = jnp.float32,
 ) -> Array:
     """Builds a grid of shape `[..., D]` along the axes using `jnp.linspace`.
 
@@ -17,7 +18,7 @@ def build_grid(
     Returns:
         A mesh grid across those axes.
     """
-    pts = [jnp.linspace(**axis) for axis in axes]
+    pts = [jnp.linspace(**axis, dtype=dtype) for axis in axes]
     return jnp.stack(jnp.meshgrid(*pts, indexing="ij"), axis=-1)
 
 
