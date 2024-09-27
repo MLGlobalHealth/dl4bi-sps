@@ -27,38 +27,44 @@ from sps.priors import Prior
 from sps.utils import build_grid
 from sps.kernels import matern_3_2, matern_5_2
 
+rng = random.key(42)
 
-# plot samples from a collection of lengthscales
-s = build_grid([{"start": 0, "stop": 1, "num": 128}])
-batch_size = 4
-approx = True # approx uses Kronecker factorization instead of Cholesky
-lengthscales = [0.05, 0.1, 0.2, 0.3, 0.5]
-fig, axes = plt.subplots(len(lengthscales), 1)
-key = random.key(42)
-for i, ls in enumerate(lengthscales):
-    gp = GP(matern_3_2, ls=Prior("fixed", {"value": ls}))
-    f, *_ = gp.simulate(key, s, batch_size, approx)
-    axes[i].plot(s, f.squeeze().T)
-    axes[i].set_title(f"ls={ls}")
-
+s_1d = build_grid([{"start": -2, "stop": 2, "num": 128}])
+s_2d = build_grid([{"start": -1.5, "stop": 1.5, "num": 300}, {"start": -2.5, "stop": 2.5, "num": 500}])
+batch_size = 1
+approx = True
+lengthscales = [0.05, 0.1, 0.2]
+for name, s in zip(["1d", "2d"], [s_1d, s_2d]):
+    fig, axes = plt.subplots(len(lengthscales), 1)
+    for i, ls in enumerate(lengthscales):
+        gp = GP(matern_3_2, ls=Prior("fixed", {"value": ls}))
+        f, *_ = gp.simulate(rng, s, batch_size, approx)
+        axes[i].set_title(f"ls={ls}")
+        if name == "1d":
+            axes[i].plot(s, f.squeeze().T)
+        else:
+            axes[i].imshow(f.squeeze().reshape(300, 500), cmap="Spectral_r")
+    plt.tight_layout()
+    plt.savefig(f"{name}_gp.png", dpi=150)
+    plt.clf()
 
 # create a simple (forever) dataloader
-def dataloader(key, gp, s, batch_size=64, approx=False):
+def dataloader(rng, gp, s, batch_size=64, approx=False):
     while True:
-        rng, key = random.split(key)
-        yield gp.simulate(rng, s, batch_size, approx)
+        rng_i, rng = random.split(rng)
+        yield gp.simulate(rng_i, s, batch_size, approx)
 
 
 gp = GP(matern_5_2, ls=Prior("beta", {"a": 2.5, "b": 5}))
-loader = dataloader(key, gp, s, batch_size, approx=True)
+loader = dataloader(rng, gp, s, batch_size, approx=True)
 var, ls, z, f = next(loader)
 
 
 # within IPython, speed test Kronecker (approx) vs. Cholesky methods 
-key, batch_size = random.key(42), 1024
+rng, batch_size = random.key(42), 1024
 s = build_grid([{"start": 0, "stop": 1, "num": 64}] * 2) # 64x64 grid
-%timeit gp.simulate(key, s, batch_size, approx=True) # ~6 ms
-%timeit gp.simulate(key, s, batch_size, approx=False) # ~57 ms
+%timeit gp.simulate(rng, s, batch_size, approx=True) # ~5 ms
+%timeit gp.simulate(rng, s, batch_size, approx=False) # ~50 ms
 ````
 
 ## Gotchas
