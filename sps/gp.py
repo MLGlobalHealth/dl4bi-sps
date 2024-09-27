@@ -193,7 +193,7 @@ def _kronecker_mvprod(Ls: Sequence[Array], z: Array) -> Array:
         `Lz`: samples from the kernel combined with random vector `z`.
     """
     x, N = z, z.size
-    for L in reversed(Ls):
+    for L in Ls:
         D = L.shape[0]
         X = x.reshape(D, N // D)
         Z = L @ X
