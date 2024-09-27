@@ -57,7 +57,7 @@ def dataloader(rng, gp, s, batch_size=64, approx=False):
 
 gp = GP(matern_5_2, ls=Prior("beta", {"a": 2.5, "b": 5}))
 loader = dataloader(rng, gp, s, batch_size, approx=True)
-var, ls, z, f = next(loader)
+f, var, ls, period, z = next(loader)
 
 
 # within IPython, speed test Kronecker (approx) vs. Cholesky methods 
