@@ -82,7 +82,7 @@ def rbf(
     Returns:
         A covariance matrix.
     """
-    return var * jnp.exp(-l2_dist_sq(x, y) / (2 * ls**2))
+    return jnp.sqrt(var) * jnp.exp(-l2_dist_sq(x, y) / (2 * ls**2))
 
 
 @jit
@@ -105,15 +105,17 @@ def periodic(
         A covariance matrix.
     """
     x, y = _prepare_dims(x, y)
-    return var * jnp.exp(-2 / ls**2 * jnp.sin(jnp.pi * jnp.abs(x - y.T) / period) ** 2)
+    return jnp.sqrt(var) * jnp.exp(
+        -2 / ls**2 * jnp.sin(jnp.pi * jnp.abs(x - y.T) / period) ** 2
+    )
 
 
 @jit
 def matern_1_2(
     x: ArrayLike,
     y: ArrayLike,
-    variance: float,
-    lengthscale: float,
+    var: float,
+    ls: float,
 ) -> ArrayLike:
     r"""Matern 1/2 kernel.
 
@@ -128,15 +130,15 @@ def matern_1_2(
     """
     d = l2_dist(x, y)
     sqrt3 = 3.0 ** (1 / 2)
-    return variance * (1 + sqrt3 * d / lengthscale) * jnp.exp(-sqrt3 * d / lengthscale)
+    return jnp.sqrt(var) * (1 + sqrt3 * d / ls) * jnp.exp(-sqrt3 * d / ls)
 
 
 @jit
 def matern_3_2(
     x: ArrayLike,
     y: ArrayLike,
-    variance: float,
-    lengthscale: float,
+    var: float,
+    ls: float,
 ) -> ArrayLike:
     r"""Matern 3/2 kernel.
 
@@ -151,15 +153,15 @@ def matern_3_2(
     """
     d = l2_dist(x, y)
     sqrt3 = 3.0 ** (1 / 2)
-    return variance * (1 + sqrt3 * d / lengthscale) * jnp.exp(-sqrt3 * d / lengthscale)
+    return jnp.sqrt(var) * (1 + sqrt3 * d / ls) * jnp.exp(-sqrt3 * d / ls)
 
 
 @jit
 def matern_5_2(
     x: ArrayLike,
     y: ArrayLike,
-    variance: float,
-    lengthscale: float,
+    var: float,
+    ls: float,
 ) -> ArrayLike:
     r"""Matern 5/2 kernel.
 
@@ -176,7 +178,7 @@ def matern_5_2(
     dsq = jnp.square(d)
     sqrt5 = jnp.sqrt(5.0)
     return (
-        variance
-        * (1 + sqrt5 * d / lengthscale + 5 / 3 * dsq / lengthscale**2)
-        * jnp.exp(-sqrt5 * d / lengthscale)
+        jnp.sqrt(var)
+        * (1 + sqrt5 * d / ls + 5 / 3 * dsq / ls**2)
+        * jnp.exp(-sqrt5 * d / ls)
     )
