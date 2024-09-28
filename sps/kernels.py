@@ -109,6 +109,29 @@ def periodic(
 
 
 @jit
+def matern_1_2(
+    x: ArrayLike,
+    y: ArrayLike,
+    variance: float,
+    lengthscale: float,
+) -> ArrayLike:
+    r"""Matern 1/2 kernel.
+
+    $K(x, y) = \text{var}\cdot\left(-\frac{\lVert x-y\rVert}{\text{ls}}\right)$
+
+    Args:
+        x: Input array of size `[..., D]`.
+        y: Input array of size `[..., D]`.
+
+    Returns:
+        A covariance matrix.
+    """
+    d = l2_dist(x, y)
+    sqrt3 = 3.0 ** (1 / 2)
+    return variance * (1 + sqrt3 * d / lengthscale) * jnp.exp(-sqrt3 * d / lengthscale)
+
+
+@jit
 def matern_3_2(
     x: ArrayLike,
     y: ArrayLike,

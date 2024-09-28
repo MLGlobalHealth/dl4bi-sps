@@ -7,7 +7,7 @@ from jax import random
 from jax.experimental import enable_x64
 
 from sps.gp import GP, _kronecker_Ls, _kronecker_mvprod
-from sps.kernels import matern_3_2, matern_5_2, periodic, rbf
+from sps.kernels import matern_1_2, matern_3_2, matern_5_2, periodic, rbf
 from sps.priors import Prior
 from sps.utils import build_grid
 
@@ -51,7 +51,7 @@ def test_kronecker_mvprod(ls, var=1.0, num_dims=2, dim_size=32, seed=7, noise=1e
         # assert jnp.allclose(Lz_kr_mvprod, Lz_ch)  # approximation only
 
 
-@pytest.mark.parametrize("kernel", [matern_3_2, matern_5_2, periodic, rbf])
+@pytest.mark.parametrize("kernel", [matern_1_2, matern_3_2, matern_5_2, periodic, rbf])
 def test_gp(kernel, num_dims=1, dim_size=32, batch_size=3, seed=0):
     locations = build_grid([{"start": -1, "stop": 1, "num": dim_size}] * num_dims)
     gp = GP(kernel)
