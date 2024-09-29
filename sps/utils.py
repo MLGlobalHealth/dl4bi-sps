@@ -1,14 +1,15 @@
 from collections.abc import Sequence
 
+import jax
 import jax.numpy as jnp
-from jax import Array
+from jax import jit, random
 from jax.typing import ArrayLike
 
 
 def build_grid(
     axes: Sequence[dict[str, float]] = [{"start": 0, "stop": 1, "num": 128}],
     dtype: jnp.dtype = jnp.float32,
-) -> Array:
+) -> jax.Array:
     """Builds a grid of shape `[..., D]` along the axes using `jnp.linspace`.
 
     Args:
@@ -22,7 +23,7 @@ def build_grid(
     return jnp.stack(jnp.meshgrid(*pts, indexing="ij"), axis=-1)
 
 
-def scale_grid(grid: ArrayLike, factor: int) -> Array:
+def scale_grid(grid: ArrayLike, factor: int) -> jax.Array:
     """Scales the `grid` of shape `[..., D]` by `factor` along all axes.
 
     Args:
@@ -37,3 +38,28 @@ def scale_grid(grid: ArrayLike, factor: int) -> Array:
         for dim, n in enumerate(grid.shape[:-1])
     ]
     return jnp.stack(jnp.meshgrid(*axes, indexing="ij"), axis=-1)
+
+
+def random_subgrid(
+    rng: jax.Array,
+    axes: Sequence[dict[str, float]] = [{"start": 0, "stop": 1, "num": 32}] * 2,
+    min_axes_pct: float = 0.05,
+):
+    """Create a random subgrid from `axes` at the same resolution."""
+    D = len(axes)
+    rng_width, rng_shift = random.split(rng)
+    u_width = random.uniform(rng_width, (1,), minval=min_axes_pct)[0]
+    u_corner = random.uniform(rng_shift, (D,), maxval=1 - u_width)  # bottom left
+    u_center = jnp.array([0.5] * D)
+    lower_left = jnp.array([d["start"] for d in axes])
+    upper_right = jnp.array([d["stop"] for d in axes])
+    scale = upper_right - lower_left
+    center = (upper_right + lower_left) / 2
+    corner = (u_corner - u_center + center) * scale
+    width = u_width * scale
+    return build_grid(
+        [
+            {"start": corner[i], "stop": corner[i] + width[i], "num": axes[i]["num"]}
+            for i in range(D)
+        ]
+    )
