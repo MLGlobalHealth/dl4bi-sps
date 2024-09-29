@@ -44,6 +44,28 @@ class Prior:
         return self.dist_func(rng, shape=shape)
 
 
+# JAX doesn't have a parameterized normal
+# https://jax.readthedocs.io/en/latest/_autosummary/jax.random.normal.html
+def normal(
+    rng: Array,
+    mu: float,
+    sigma: float,
+    shape: Sequence[int],
+) -> Array:
+    """Normal distribution parameterized by `mu` and `sigma`.
+
+    Args:
+        rng: A psuedo-random number generator from `jax.random`.
+        mu: Location, or center of distribution.
+        sigma: Standard deviation.
+        shape: Output shape of sample(s).
+
+    Returns:
+        A sample of shape `shape`.
+    """
+    return mu + sigma * random.normal(rng, shape)
+
+
 # JAX doesn't have a lambda parameterized exponential
 # https://jax.readthedocs.io/en/latest/_autosummary/jax.random.exponential.html
 def exponential(
@@ -94,11 +116,12 @@ def inverse_gamma(
     beta: float,
     shape: Sequence[int],
 ) -> Array:
-    """Exponential parameterized by lambda `lam`.
+    """Inverse-Gamma parameterized by `alpha` (shape) and `beta` (rate).
 
     Args:
         rng: A psuedo-random number generator from `jax.random`.
-        lam: Lambda of exponential distribution.
+        alpha: The standard shape parameters.
+        beta: The rate parameter.
         shape: Output shape of sample(s).
 
     Returns:
