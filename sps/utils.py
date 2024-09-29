@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 import jax
 import jax.numpy as jnp
-from jax import jit, random
+from jax import random
 from jax.typing import ArrayLike
 
 
@@ -45,7 +45,12 @@ def random_subgrid(
     axes: Sequence[dict[str, float]] = [{"start": 0, "stop": 1, "num": 32}] * 2,
     min_axes_pct: float = 0.05,
 ):
-    """Create a random subgrid from `axes` at the same resolution."""
+    """Create a random subgrid from `axes` at the same resolution.
+
+    .. warning::
+        This method assumes that the `start` points always comes before the
+        `stop` point on the real number line.
+    """
     D = len(axes)
     rng_width, rng_shift = random.split(rng)
     u_width = random.uniform(rng_width, (1,), minval=min_axes_pct)[0]
