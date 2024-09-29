@@ -31,48 +31,91 @@ class Prior:
     def __eq__(self, other):
         return hash(self) == hash(other)
 
-    def sample(self, key: Array, shape: Sequence[int] = (1,)) -> Array:
+    def sample(self, rng: Array, shape: Sequence[int] = (1,)) -> Array:
         """Samples this prior.
 
         Args:
-            key: A psuedo-random number generator from `jax.random`.
+            rng: A psuedo-random number generator from `jax.random`.
             shape: Output shape of sample(s).
 
         Returns:
             A sample of shape `shape`.
         """
-        return self.dist_func(key, shape=shape)
+        return self.dist_func(rng, shape=shape)
 
 
-# JAX doesn't have a lambda parameterized exponential (2024-01-28)
+# JAX doesn't have a lambda parameterized exponential
 # https://jax.readthedocs.io/en/latest/_autosummary/jax.random.exponential.html
 def exponential(
-    key: Array,
+    rng: Array,
     lam: float,
     shape: Sequence[int],
 ) -> Array:
     """Exponential parameterized by lambda `lam`.
 
     Args:
-        key: A psuedo-random number generator from `jax.random`.
+        rng: A psuedo-random number generator from `jax.random`.
         lam: Lambda of exponential distribution.
         shape: Output shape of sample(s).
 
     Returns:
         A sample of shape `shape`.
     """
-    return 1 / lam * random.exponential(key, shape)
+    return 1 / lam * random.exponential(rng, shape)
+
+
+# JAX doesn't have a rate parameterized gamma
+# https://jax.readthedocs.io/en/latest/_autosummary/jax.random.gamma.html
+def gamma(
+    rng: Array,
+    alpha: float,  # shape
+    beta: float,  # rate
+    shape: Sequence[int],
+) -> Array:
+    """Gamma parameterized by `alpha` (shape) and `beta` (rate).
+
+    Args:
+        rng: A psuedo-random number generator from `jax.random`.
+        alpha: The standard shape parameters.
+        beta: The rate parameter.
+        shape: Output shape of sample(s).
+
+    Returns:
+        A sample of shape `shape`.
+    """
+    return random.gamma(rng, alpha, shape) / beta
+
+
+# JAX doesn't have a lambda parameterized inverse-gamma
+# https://jax.readthedocs.io/en/latest/_autosummary/jax.random.gamma.html
+def inverse_gamma(
+    rng: Array,
+    alpha: float,
+    beta: float,
+    shape: Sequence[int],
+) -> Array:
+    """Exponential parameterized by lambda `lam`.
+
+    Args:
+        rng: A psuedo-random number generator from `jax.random`.
+        lam: Lambda of exponential distribution.
+        shape: Output shape of sample(s).
+
+    Returns:
+        A sample of shape `shape`.
+    """
+    return 1 / gamma(rng, alpha, beta, shape)
 
 
 def fixed(
-    key: Array,
+    rng: Array,
     value: float,
     shape: Sequence[int],
 ) -> Array:
     """Fixed distribution.
 
     Args:
-        key: A psuedo-random number generator from `jax.random`.
+        rng: A psuedo-random number generator from `jax.random`.
         value: A fixed value to return for all samples.
         shape: Output shape of sample(s).
 
