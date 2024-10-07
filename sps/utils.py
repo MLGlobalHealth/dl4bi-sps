@@ -44,6 +44,7 @@ def random_subgrid(
     rng: jax.Array,
     axes: Sequence[dict[str, float]] = [{"start": 0, "stop": 1, "num": 32}] * 2,
     min_axes_pct: float = 0.05,
+    max_axes_pct: float = 1.0,
 ):
     """Create a random subgrid from `axes` at the same resolution.
 
@@ -53,7 +54,8 @@ def random_subgrid(
     """
     D = len(axes)
     rng_width, rng_shift = random.split(rng)
-    u_width = random.uniform(rng_width, (1,), minval=min_axes_pct)[0]
+    u_width = random.uniform(rng_width, (1,), minval=min_axes_pct, maxval=max_axes_pct)
+    u_width = u_width[0]
     u_corner = random.uniform(rng_shift, (D,), maxval=1 - u_width)  # bottom left
     u_center = jnp.array([0.5] * D)
     lower_left = jnp.array([d["start"] for d in axes])
