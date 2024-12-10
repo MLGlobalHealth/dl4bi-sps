@@ -163,6 +163,6 @@ def uniform(
         shape: Output shape of sample(s).
 
     Returns:
-        A fixed sample of shape `shape`.
+        A sample of shape `shape`.
     """
     return random.uniform(rng, shape, minval=minval, maxval=maxval)
