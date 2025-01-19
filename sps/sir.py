@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, Callable
 
 import jax
 import jax.numpy as jnp
@@ -8,6 +8,7 @@ from jax import Array, jit, random
 from jax.lax import conv_general_dilated
 
 from .priors import Prior
+from .utils import inv_dist_sq_kernel
 
 
 @dataclass
@@ -18,6 +19,7 @@ class LatticeSIR:
         beta: A prior over the infection rate.
         gamma: A prior over the recovery rate.
         num_init: A prior over the initial number of infected (nearest integer is used).
+        kernel: Convolutional kernel used for transmission.
 
     Returns:
         An instance of the `LatticeSIR` dataclass.
@@ -26,6 +28,7 @@ class LatticeSIR:
     beta: Prior = Prior("beta", {"a": 5, "b": 10})
     gamma: Prior = Prior("inverse_gamma", {"alpha": 5, "beta": 0.4})
     num_init: Prior = Prior("uniform", {"minval": 1, "maxval": 5})
+    kernel: jax.Array = inv_dist_sq_kernel(width=7)
 
     def simulate(
         self,
@@ -39,12 +42,9 @@ class LatticeSIR:
         gamma = self.gamma.sample(rng_gamma)
         num_init = int(jnp.round(self.num_init.sample(rng_num_init, (1,)))[0])
         init_locs = random.choice(rng_init, math.prod(dims), (num_init,), replace=False)
-
         # initialize state array: 0 = susceptible, 1 = infected, -1 = recovered
         state = jnp.zeros(dims).at[jnp.unravel_index(init_locs, dims)].set(1.0)
-
-        kernel = jnp.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]], dtype=jnp.float32)
-        kernel = kernel[None, None, :, :]  # add dummy batch and channel dims
+        kernel = self.kernel[None, None, ...]  # add dummy batch & channel dims
 
         @jit
         def step(rng, state):

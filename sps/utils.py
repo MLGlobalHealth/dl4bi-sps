@@ -7,7 +7,9 @@ from jax.typing import ArrayLike
 
 
 def build_grid(
-    axes: Sequence[dict[str, float]] = [{"start": 0, "stop": 1, "num": 128}],
+    axes: Sequence[dict[str, jax.Array | float]] = [
+        {"start": 0, "stop": 1, "num": 128}
+    ],
     dtype: jnp.dtype = jnp.float32,
 ) -> jax.Array:
     """Builds a grid of shape `[..., D]` along the axes using `jnp.linspace`.
@@ -70,3 +72,12 @@ def random_subgrid(
             for i in range(D)
         ]
     )
+
+
+def inv_dist_sq_kernel(width: int = 7):
+    assert width % 2 == 1, "Kernel size must be odd."
+    center = width // 2
+    x = y = jnp.arange(width) - center
+    xx, yy = jnp.meshgrid(x, y)
+    dist_sq = jnp.float32(xx**2 + yy**2)
+    return 1 / dist_sq.at[center, center].set(jnp.inf)
