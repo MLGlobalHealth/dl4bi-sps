@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Tuple, Callable
+from typing import Tuple
 
 import jax
 import jax.numpy as jnp
@@ -19,7 +19,8 @@ class LatticeSIR:
         beta: A prior over the infection rate.
         gamma: A prior over the recovery rate.
         num_init: A prior over the initial number of infected (nearest integer is used).
-        kernel: Convolutional kernel used for transmission.
+        kernel_width: Width of inverse distance weighted convolutional kernel
+            used for transmission.
 
     Returns:
         An instance of the `LatticeSIR` dataclass.
@@ -28,7 +29,7 @@ class LatticeSIR:
     beta: Prior = Prior("beta", {"a": 5, "b": 10})
     gamma: Prior = Prior("inverse_gamma", {"alpha": 5, "beta": 0.4})
     num_init: Prior = Prior("uniform", {"minval": 1, "maxval": 5})
-    kernel: jax.Array = inv_dist_sq_kernel(width=7)
+    kernel_width: int = 7
 
     def simulate(
         self,
@@ -44,7 +45,7 @@ class LatticeSIR:
         init_locs = random.choice(rng_init, math.prod(dims), (num_init,), replace=False)
         # initialize state array: 0 = susceptible, 1 = infected, -1 = recovered
         state = jnp.zeros(dims).at[jnp.unravel_index(init_locs, dims)].set(1.0)
-        kernel = self.kernel[None, None, ...]  # add dummy batch & channel dims
+        kernel = jit(inv_dist_sq_kernel)(self.kernel_width)[None, None, ...]
 
         @jit
         def step(rng, state):
