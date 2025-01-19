@@ -8,13 +8,13 @@ from sps.sir import LatticeSIR
 
 
 def main():
-    rng = random.key(44)
+    rng = random.key(42)
     dims = (64, 64)
-    num_steps = 100
+    num_steps = 20
     steps, beta, gamma, num_init = LatticeSIR().simulate(rng, dims, num_steps)
     beta, gamma = float(beta[0]), float(gamma[0])  # Extract scalar values
     cmap = ListedColormap(
-        ["darkgreen", "white", "darkred"]
+        ["#004D40", "#1E88E5", "#D81B60"]
     )  # recovered, susceptible, infected
     bounds = [-1.5, -0.5, 0.5, 1.5]  # Boundaries for colormap
     norm = plt.matplotlib.colors.BoundaryNorm(bounds, cmap.N)

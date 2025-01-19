@@ -8,6 +8,7 @@ from jax import Array, jit, random
 from jax.lax import conv_general_dilated
 
 from .priors import Prior
+from .utils import inv_dist_sq_kernel
 
 
 @dataclass
@@ -17,6 +18,8 @@ class LatticeSI:
     Args:
         beta: A prior over the infection rate.
         num_init: A prior over the initial number of infected (nearest integer is used).
+        kernel_width: Width of inverse distance weighted convolutional kernel
+            used for transmission.
 
     Returns:
         An instance of the `LatticeSI` dataclass.
@@ -24,6 +27,7 @@ class LatticeSI:
 
     beta: Prior = Prior("beta", {"a": 2, "b": 18})
     num_init: Prior = Prior("uniform", {"minval": 1, "maxval": 5})
+    kernel_width: int = 9
 
     def simulate(
         self,
@@ -37,8 +41,7 @@ class LatticeSI:
         num_init = int(jnp.round(self.num_init.sample(rng_num_init, (1,)))[0])
         init_locs = random.choice(rng_init, math.prod(dims), (num_init,), replace=False)
         state = jnp.zeros(dims).at[jnp.unravel_index(init_locs, dims)].set(1.0)
-        kernel = jnp.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]], dtype=jnp.float32)
-        kernel = kernel[None, None, :, :]  # add dummy batch and channel dims
+        kernel = inv_dist_sq_kernel(self.kernel_width)[None, None, ...]
 
         @jit
         def step(rng, state):

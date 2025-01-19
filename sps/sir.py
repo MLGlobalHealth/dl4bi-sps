@@ -29,13 +29,13 @@ class LatticeSIR:
     beta: Prior = Prior("beta", {"a": 5, "b": 10})
     gamma: Prior = Prior("inverse_gamma", {"alpha": 5, "beta": 0.4})
     num_init: Prior = Prior("uniform", {"minval": 1, "maxval": 5})
-    kernel_width: int = 7
+    kernel_width: int = 9
 
     def simulate(
         self,
         rng: Array,
         dims: Tuple[int, int] = (64, 64),
-        num_steps: int = 100,
+        num_steps: int = 20,
     ):
         """Simulate `num_steps` of SIR model on a lattice of `dims`."""
         rng_beta, rng_gamma, rng_num_init, rng_init, rng = random.split(rng, 5)

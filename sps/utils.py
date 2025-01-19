@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -74,7 +75,7 @@ def random_subgrid(
     )
 
 
-@jit
+@partial(jit, static_argnames=("width",))
 def inv_dist_sq_kernel(width: int = 7):
     center = width // 2
     x = y = jnp.arange(width) - center

@@ -9,7 +9,7 @@ from sps.si import LatticeSI
 def main():
     rng = random.key(42)
     dims = (64, 64)
-    num_steps = 100
+    num_steps = 20
     steps, beta, num_init = LatticeSI().simulate(rng, dims, num_steps)
     beta = float(beta[0])
     fig, ax = plt.subplots()
