@@ -1,5 +1,6 @@
 import math
 from dataclasses import dataclass
+from functools import partial
 from typing import Tuple
 
 import jax
@@ -36,30 +37,51 @@ class LatticeSI:
         num_steps: int = 100,
     ):
         """Simulate `num_steps` of SI model on a lattice of `dims`."""
-        rng_beta, rng_num_init, rng_init, rng = random.split(rng, 4)
-        beta = self.beta.sample(rng_beta)
-        num_init = int(jnp.round(self.num_init.sample(rng_num_init, (1,)))[0])
-        init_locs = random.choice(rng_init, math.prod(dims), (num_init,), replace=False)
-        state = jnp.zeros(dims).at[jnp.unravel_index(init_locs, dims)].set(1.0)
-        kernel = inv_dist_sq_kernel(self.kernel_width)[None, None, ...]
+        rng_num_init, rng = random.split(rng)
+        # WARNING: this will create a separate cached jitted function
+        # for each num_init possible; this is also why we don't sample
+        # beta and gamma here -- each unique tuple of static args would
+        # get its own cached jitted function, which can cause memory leaks
+        num_init = int(self.num_init.sample(rng_num_init)[0])
+        return _simulate(
+            rng,
+            dims,
+            num_init,
+            num_steps,
+            self.beta,
+            self.kernel_width,
+        )
 
-        @jit
-        def step(rng, state):
-            neighbor_sum = conv_general_dilated(
-                state[None, None, :, :],  # add dummy batch and channel dims
-                kernel,
-                window_strides=(1, 1),
-                padding="SAME",
-            )[0, 0]  # remove batch and channel dimensions
-            infection_prob = beta * neighbor_sum
-            u = random.uniform(rng, state.shape)
-            new_infections = (state == 0.0) & (u < infection_prob)
-            return jnp.where(new_infections, 1.0, state)
 
-        def step_scanner(state, rng):
-            state = step(rng, state)
-            return state, state
+@partial(jit, static_argnums=tuple(range(1, 6)))
+def _simulate(
+    rng: jax.Array,
+    dims: Tuple[int, int],
+    num_init: int,
+    num_steps: int,
+    beta_prior: Prior,
+    kernel_width: int,
+):
+    rng_beta, rng_gamma, rng_init, *rng_steps = random.split(rng, 3 + num_steps - 1)
+    beta = beta_prior.sample(rng_beta)
+    init_locs = random.choice(rng_init, math.prod(dims), (num_init,), replace=False)
+    # initialize state array: 0 = susceptible, 1 = infected
+    state = jnp.zeros(dims).at[jnp.unravel_index(init_locs, dims)].set(1.0)
+    kernel = inv_dist_sq_kernel(kernel_width)[None, None, :, :]
 
-        rngs = random.split(rng, num_steps - 1)
-        _, steps = jax.lax.scan(step_scanner, state, rngs)
-        return jnp.vstack([state[None, ...], steps]), beta, num_init
+    @jit
+    def step(state: jax.Array, rng: jax.Array):
+        neighbor_sum = conv_general_dilated(
+            jnp.float32(state == 1.0)[None, None, :, :],  # infected only
+            kernel,
+            window_strides=(1, 1),
+            padding="SAME",
+        )[0, 0]  # remove batch and channel dimensions
+        rng_infect, rng_recover = random.split(rng)
+        u_infect = random.uniform(rng_infect, state.shape)
+        new_infections = (state == 0.0) & (u_infect < beta * neighbor_sum)
+        state = jnp.where(new_infections, 1.0, state)  # susceptible -> infected
+        return state, state
+
+    _, steps = jax.lax.scan(step, state, jnp.array(rng_steps))
+    return jnp.vstack([state[None, ...], steps]), beta, num_init

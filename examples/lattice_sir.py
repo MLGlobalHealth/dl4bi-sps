@@ -17,7 +17,7 @@ def main(args):
     beta = Prior("beta", {"a": 2, "b": 8})  # transmission prior
     gamma = Prior("inverse_gamma", {"alpha": 5, "beta": 0.4})
     num_init = Prior("randint", {"minval": args.min_init, "maxval": args.max_init})
-    sir = LatticeSIR(beta, gamma)
+    sir = LatticeSIR(beta, gamma, num_init)
     steps, beta, gamma, num_init = sir.simulate(rng, dims, args.num_steps)
     beta, gamma = float(beta[0]), float(gamma[0])  # Extract scalar values
     cmap = ListedColormap(
