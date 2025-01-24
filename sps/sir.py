@@ -64,6 +64,7 @@ class LatticeSIR:
             state = jnp.where(new_recoveries, -1.0, state)  # infected -> recovered
             return state
 
+        @jit
         def step_scanner(state, rng):
             state = step(rng, state)
             return state, state
