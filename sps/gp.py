@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Sequence, Optional
+from typing import Callable, Optional, Sequence
 
 import jax.numpy as jnp
 from jax import Array, jit, lax, random, vmap
@@ -80,7 +80,7 @@ class GP:
         ls = self.ls.sample(rng_ls)
         z = random.normal(rng_z, shape=(batch_size, num_locations))
         kernel = self.kernel
-        period = jnp.array(jnp.inf)
+        period = None
         if self.period is not None:
             period = self.period.sample(rng_period)
             kernel = Partial(self.kernel, period=period)
