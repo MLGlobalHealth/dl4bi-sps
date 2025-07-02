@@ -4,6 +4,7 @@ import sys
 
 import numpy as np
 from jax import random
+from numpy.lib.format import open_memmap
 from tqdm import tqdm
 
 from sps.popgen import PopGen
@@ -13,7 +14,7 @@ def main(args):
     rng = random.key(args.seed)
     popgen = PopGen()
     N, B, T, C, (H, W) = args.num_batches, args.batch_size, args.num_steps, 1, args.dims
-    mm = np.memmap(args.path, dtype=np.float32, mode="w+", shape=(N, B, T, C, H, W))
+    mm = open_memmap(args.path, dtype=np.float32, mode="w+", shape=(N, B, T, C, H, W))
     for i in tqdm(range(N), unit="batches"):
         rng_i, rng = random.split(rng)
         prevalences, _ = popgen.simulate(
@@ -25,7 +26,7 @@ def main(args):
             args.dims,
             wrap_edges=True,
         )
-        mm[i : i + 1] = prevalences
+        mm[i] = prevalences
         if i % args.flush_every_n == 0:
             mm.flush()
     print(f"Finished! Saved to {args.path}")
