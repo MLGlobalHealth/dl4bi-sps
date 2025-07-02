@@ -16,8 +16,9 @@ def main(args):
     mm = np.memmap(args.path, dtype=np.float32, mode="w+", shape=(N, B, T, C, H, W))
     offset = 0
     for i in tqdm(range(N), unit="batches"):
+        rng_i, rng = random.split(rng)
         prevalences, _ = popgen.simulate(
-            rng,
+            rng_i,
             args.num_warmup,
             args.num_steps,
             args.step_interval,
