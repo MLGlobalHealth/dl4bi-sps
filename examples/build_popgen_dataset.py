@@ -26,8 +26,9 @@ def main(args):
             wrap_edges=True,
         )
         mm[offset : offset + B] = prevalences
-        mm.flush()
         offset += B
+        if i % args.flush_every_n == 0:
+            mm.flush()
     print(f"Finished! Saved to {args.path}")
 
 
@@ -77,6 +78,13 @@ def parse_args(argv):
         type=int,
         default=100000,
         help="Number of batches to generate.",
+    )
+    parser.add_argument(
+        "-f",
+        "--flush_every_n",
+        type=int,
+        default=100,
+        help="Flush batches to disk every `n`.",
     )
     parser.add_argument(
         "-d",
