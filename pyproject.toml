@@ -10,10 +10,11 @@ python = "^3.11"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
+pytest-benchmark = "^5.1.0"
 
 [[tool.poetry.source]]
 name = "PyPI"
-priority = "default"
+priority = "primary"
 
 [tool.ruff.lint]
 extend-select = ["I"]
