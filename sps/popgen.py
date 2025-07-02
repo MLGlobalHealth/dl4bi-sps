@@ -53,7 +53,18 @@ class PopGen:
         wrap_edges: bool = True,
         state: Optional[PopGenState] = None,
     ):
-        """Simulate `num_steps` of SIR model on a lattice of `dims`."""
+        """
+        Args:
+            rng: Random number key.
+            num_warmup: Number of warmup steps (thrown away).
+            num_steps: Total number of steps kept at the end.
+            step_interval: Number of steps to skip between kept steps.
+            batch_size: Number of sequences of steps to keep.
+            dims: Surface deme dimensions, HxW.
+            wrap_edges: Connect the top and bottom and left and right
+                sides of the surface.
+            state: Continue from this `PopGenState`.
+        """
         if state is None:
             rng_mi, rng_mu, rng_po, rng = random.split(rng, 4)
             migration = self.migration.sample(rng_mi, (1,))
