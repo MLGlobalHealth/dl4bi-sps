@@ -40,7 +40,7 @@ def parse_args(argv):
     parser.add_argument("-nw", "--num_warmup", type=int, default=10000)
     parser.add_argument("-ns", "--num_steps", type=int, default=32)
     parser.add_argument("-si", "--step_interval", type=int, default=16)
-    parser.add_argument("-d", "--dims", type=list, default=[32, 32])
+    parser.add_argument("-d", "--dims", type=list, default=[128, 128])
     return parser.parse_args(argv[1:])
 
 
