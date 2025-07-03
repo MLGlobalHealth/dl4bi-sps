@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import sys
+from pathlib import Path
 
+import jax.numpy as jnp
+import numpy as np
 from jax import random
 from numpy.lib.format import open_memmap
 from tqdm import tqdm
-import jax.numpy as jnp
-from pathlib import Path
-import numpy as np
 
 from sps.popgen import PopGen, PopGenState
 
@@ -43,9 +43,7 @@ def main(args):
                 rng, rng_i = random.split(rng)
                 prevalences, last_state = popgen.simulate(
                     rng_i,
-                    # first time do the full warmup, thereafter when last_state
-                    # is passed, skip the next 1k to collect uncorrelated sequences
-                    num_warmup=args.num_warmup if i == 0 else 1000,
+                    num_warmup=args.num_warmup if i == 0 else 0,
                     num_steps=args.num_steps,
                     step_interval=args.step_interval,
                     batch_size=args.batch_size,
@@ -107,7 +105,7 @@ def parse_args(argv):
         "-si",
         "--step_interval",
         type=int,
-        default=10,
+        default=50,
         help="Number of timesteps between kept steps.",
     )
     parser.add_argument(
@@ -121,13 +119,14 @@ def parse_args(argv):
         "-nb",
         "--num_batches_per_state",
         type=int,
-        default=5000,
+        default=500,
         help="Number of batches to generate per parameter state.",
     )
     parser.add_argument(
         "-d",
         "--dims",
-        type=list,
+        nargs=2,
+        type=int,
         default=[32, 32],
         help="Dimensions of surface.",
     )
