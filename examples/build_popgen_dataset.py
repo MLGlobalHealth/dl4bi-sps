@@ -35,7 +35,7 @@ def main(args):
                 dir / fname,
                 dtype=np.float32,
                 mode="w+",
-                shape=(N, B, T, C, H, W),
+                shape=(N, B, C, T, H, W),
             )
             offset = 0
             last_state = PopGenState(migration, mutation, population, prevalence)

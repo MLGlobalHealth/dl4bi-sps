@@ -124,7 +124,7 @@ def _simulate(
     (rng, buffer, last_prev), _ = lax.scan(
         step, (rng, buffer, prevalence), jnp.arange(total_steps)
     )
-    prevalences = jnp.moveaxis(buffer, 0, 1)  # [B, T, C, H, W]
+    prevalences = jnp.moveaxis(buffer, 0, 2)  # [B, C, T, H, W]
     last_state = replace(state, prevalence=last_prev)
     return prevalences, last_state
 
