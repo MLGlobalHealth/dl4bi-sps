@@ -108,5 +108,15 @@ uv run python scripts/release.py .env "Release notes"
 ```
 
 The helper bumps the patch version, commits and tags `v<version> <message>`,
-rebuilds `dist/`, publishes to TestPyPI and PyPI, pushes `main` and the tag,
-and smoke-tests the published install targets for `dl4bi-sps`.
+rebuilds `dist/`, publishes to TestPyPI and PyPI, smoke-tests the published
+install targets for `dl4bi-sps`, then pushes `main` and the tag.
+
+To rerun only the install smoke tests for an already-published version:
+```bash
+uv run python scripts/release.py --smoke-only 0.1.2
+```
+
+To limit the smoke-only run to specific targets:
+```bash
+uv run python scripts/release.py --smoke-only 0.1.2 --target base --target cpu
+```
