@@ -1,17 +1,16 @@
 seed: 42
 num_generations: 512
-include_initial: false
-batch_size: 256
-num_chunks: 10
+num_simulations_per_batch: 128
+num_batches: 10000
 
 priors:
-  Nh:
+  num_hosts:
     dist: choice
     kwargs:
       values:
         - 1024
         - 2048
-  Q:
+  num_transmitted_alleles:
     dist: randint
     kwargs:
       minval: 1
@@ -45,7 +44,18 @@ priors:
 output:
   store: outputs/malaria.zarr
   overwrite: true
-  sample_chunk: 256
+  num_batches_per_write: 8
+  chunks:
+    num_simulations: ${num_simulations_per_batch}
+    num_generations: ${num_generations}
+    num_states: 16
+  compression:
+    enabled: true
+    codec: blosc
+    cname: zstd
+    clevel: 5
+    shuffle: shuffle
+  write_empty_chunks: false
 
 hydra:
   job:

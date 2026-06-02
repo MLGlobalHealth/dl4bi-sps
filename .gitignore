@@ -5,4 +5,5 @@
 *.png
 **/__pycache__/*
 .venv/
+outputs/
 !uv.lock

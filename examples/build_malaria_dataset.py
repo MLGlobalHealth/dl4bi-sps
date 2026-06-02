@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-import json
+from dataclasses import dataclass
+from itertools import groupby
 import shutil
 from pathlib import Path
 
@@ -8,12 +9,25 @@ import jax
 import numpy as np
 import xarray as xr
 import zarr
-from jax import random
+from jax import Array, random
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
+from zarr.codecs import BloscCodec
 
-from dl4bi_sps.malaria import MalariaTransmission
+from dl4bi_sps.malaria import MalariaSimulationBatch, MalariaTransmission
 from dl4bi_sps.priors import Prior
+
+
+@dataclass(frozen=True)
+class MalariaBatchSpec:
+    batch_idx: int
+    rng: Array
+    num_hosts: int
+    num_transmitted_alleles: int
+
+    @property
+    def group(self) -> str:
+        return _shape_group(self.num_hosts, self.num_transmitted_alleles)
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="malaria_dataset")
@@ -30,81 +44,132 @@ def main(cfg: DictConfig) -> None:
     store.parent.mkdir(parents=True, exist_ok=True)
 
     simulator = _build_simulator(cfg)
-    rng = random.key(cfg.seed)
+    seed = int(cfg.seed)
+    rng = random.key(seed)
     next_sample_id = 0
-    group_counts: dict[str, int] = {}
+    group_num_samples: dict[str, int] = {}
     group_records: list[dict] = []
-    param_names: tuple[str, ...] | None = None
-    total_chunks = int(cfg.num_chunks)
-    progress = tqdm(total=total_chunks, desc="Generating malaria dataset", unit="chunk")
+    num_batches = int(cfg.num_batches)
+    num_simulations_per_batch = int(cfg.num_simulations_per_batch)
+    num_generations = int(cfg.num_generations)
+    if num_batches < 1:
+        raise ValueError("num_batches must be at least 1.")
+    num_batches_per_write = int(cfg.output.num_batches_per_write)
+    if num_batches_per_write < 1:
+        raise ValueError("output.num_batches_per_write must be at least 1.")
+    progress = tqdm(total=num_batches, desc="Generating malaria dataset", unit="batch")
+    batch_specs = _sample_batch_specs(simulator, rng, num_batches)
+    generation_ids = np.arange(num_generations, dtype=np.int32)
 
-    for chunk_idx in range(total_chunks):
-        rng, rng_shape = random.split(rng)
-        Nh, Q = simulator.sample_shape(rng_shape)
-        group = _shape_group(Nh, Q)
+    for group, group_specs_iter in groupby(batch_specs, key=lambda spec: spec.group):
+        group_specs = list(group_specs_iter)
+        for write_specs in _chunks(group_specs, num_batches_per_write):
+            datasets = []
+            for spec in write_specs:
+                ds, sample_ids = _simulate_dataset(
+                    simulator,
+                    spec,
+                    num_generations,
+                    num_simulations_per_batch,
+                    seed,
+                    generation_ids,
+                    next_sample_id,
+                )
+                next_sample_id += num_simulations_per_batch
+                datasets.append(ds)
+                group_records.append(
+                    {
+                        "group": spec.group,
+                        "num_hosts": spec.num_hosts,
+                        "num_transmitted_alleles": spec.num_transmitted_alleles,
+                        "batch_idx": int(spec.batch_idx),
+                        "sample_start": int(sample_ids[0]),
+                        "sample_stop": int(sample_ids[-1]) + 1,
+                    }
+                )
+                progress.update(1)
+                progress.set_postfix(
+                    {
+                        "num_total_samples": next_sample_id,
+                        "group": spec.group,
+                    },
+                    refresh=False,
+                )
+            _flush_datasets(
+                datasets,
+                store,
+                group,
+                group_num_samples,
+                cfg.output,
+            )
 
-        rng, rng_chunk = random.split(rng)
-        allele_freq, state = simulator.simulate(
-            rng_chunk,
-            num_generations=cfg.num_generations,
-            batch_size=cfg.batch_size,
-            Nh=Nh,
-            Q=Q,
-            include_initial=cfg.include_initial,
-        )
-        allele_freq = np.asarray(jax.device_get(allele_freq), dtype=np.float32)
-        params_jax, names = state.parameter_matrix(Nh, Q)
-        if param_names is None:
-            param_names = names
-        elif param_names != names:
-            raise ValueError(f"Parameter names changed from {param_names} to {names}")
-        params = np.asarray(jax.device_get(params_jax), dtype=np.float32)
-        sample_ids = np.arange(
-            next_sample_id,
-            next_sample_id + cfg.batch_size,
-            dtype=np.int64,
-        )
-        next_sample_id += cfg.batch_size
-
-        ds = _make_dataset(allele_freq, params, names, sample_ids, Nh, Q, cfg.seed)
-        append = group_counts.get(group, 0) > 0
-        _write_chunk(
-            ds,
-            store,
-            group,
-            append=append,
-            sample_chunk=cfg.output.sample_chunk,
-        )
-        group_counts[group] = group_counts.get(group, 0) + cfg.batch_size
-
-        group_records.append(
-            {
-                "group": group,
-                "Nh": Nh,
-                "Q": Q,
-                "chunk_idx": int(chunk_idx),
-                "sample_start": int(sample_ids[0]),
-                "sample_stop": int(sample_ids[-1]) + 1,
-            }
-        )
-        progress.update(1)
-        progress.set_postfix_str(
-            f"{group} samples={group_counts[group]}",
-            refresh=False,
-        )
-
-    if param_names is None:
-        raise ValueError("No samples were generated. Check num_chunks.")
     progress.close()
-    _write_root_attrs(store, cfg, group_records, param_names)
+    _write_root_attrs(store, cfg, group_records)
     print(f"Done. Wrote {next_sample_id} samples to {store}")
+
+
+def _sample_batch_specs(
+    simulator: MalariaTransmission,
+    rng: Array,
+    num_batches: int,
+) -> list[MalariaBatchSpec]:
+    """Sample all batch shapes first so same-shape batches run together."""
+    specs = []
+    for batch_idx in range(num_batches):
+        rng, rng_shape = random.split(rng)
+        num_hosts, num_transmitted_alleles = simulator.sample_shape(rng_shape)
+        rng, rng_batch = random.split(rng)
+        specs.append(
+            MalariaBatchSpec(
+                batch_idx=batch_idx,
+                rng=rng_batch,
+                num_hosts=num_hosts,
+                num_transmitted_alleles=num_transmitted_alleles,
+            )
+        )
+    return sorted(
+        specs,
+        key=lambda spec: (spec.num_hosts, spec.num_transmitted_alleles),
+    )
+
+
+def _chunks(items: list[MalariaBatchSpec], size: int) -> list[list[MalariaBatchSpec]]:
+    return [items[start : start + size] for start in range(0, len(items), size)]
+
+
+def _simulate_dataset(
+    simulator: MalariaTransmission,
+    spec: MalariaBatchSpec,
+    num_generations: int,
+    num_simulations: int,
+    seed: int,
+    generation_ids: np.ndarray,
+    sample_start: int,
+) -> tuple[xr.Dataset, np.ndarray]:
+    sample_stop = sample_start + num_simulations
+    sample_ids = np.arange(sample_start, sample_stop, dtype=np.int64)
+    batch = simulator.simulate_batch(
+        spec.rng,
+        num_generations=num_generations,
+        num_simulations=num_simulations,
+        num_hosts=spec.num_hosts,
+        num_transmitted_alleles=spec.num_transmitted_alleles,
+    )
+    ds = make_histogram_dataset(
+        batch,
+        sample_ids,
+        generation_ids,
+        seed,
+        context=f"in batch {spec.batch_idx} for {spec.group}",
+    )
+    return ds, sample_ids
 
 
 def _build_simulator(cfg: DictConfig) -> MalariaTransmission:
     priors = cfg.priors
     return MalariaTransmission(
-        Nh=_prior_from_config(priors.Nh),
-        Q=_prior_from_config(priors.Q),
+        num_hosts=_prior_from_config(priors.num_hosts),
+        num_transmitted_alleles=_prior_from_config(priors.num_transmitted_alleles),
         chi=_prior_from_config(priors.chi),
         mu=_prior_from_config(priors.mu),
         sw=_prior_from_config(priors.sw),
@@ -119,81 +184,182 @@ def _prior_from_config(cfg: DictConfig) -> Prior:
     return Prior(cfg.dist, dict(kwargs))
 
 
-def _shape_group(Nh: int, Q: int) -> str:
-    return f"nh={int(Nh)}/q={int(Q)}"
+def _shape_group(num_hosts: int, num_transmitted_alleles: int) -> str:
+    return (
+        f"num_hosts={int(num_hosts)}/"
+        f"num_transmitted_alleles={int(num_transmitted_alleles)}"
+    )
 
 
-def _make_dataset(
-    allele_freq: np.ndarray,
-    parameters: np.ndarray,
-    parameter_names: tuple[str, ...],
+def _num_hosts_dtype(num_hosts: int) -> np.dtype:
+    if num_hosts <= np.iinfo(np.uint16).max:
+        return np.dtype(np.uint16)
+    return np.dtype(np.uint32)
+
+
+def _validate_num_hosts_by_state(
+    num_hosts_by_state: np.ndarray,
+    num_hosts: int,
+    context: str = "",
+) -> None:
+    observed_num_hosts = num_hosts_by_state.sum(axis=-1)
+    if np.all(observed_num_hosts == num_hosts):
+        return
+    observed_min = int(np.min(observed_num_hosts))
+    observed_max = int(np.max(observed_num_hosts))
+    suffix = f" {context}" if context else ""
+    raise ValueError(
+        f"Host histogram counts do not sum to num_hosts={num_hosts}{suffix}: "
+        f"observed [{observed_min}, {observed_max}]."
+    )
+
+
+def make_histogram_dataset(
+    batch: MalariaSimulationBatch,
     sample_ids: np.ndarray,
-    Nh: int,
-    Q: int,
+    generation_ids: np.ndarray,
     seed: int,
+    context: str = "",
 ) -> xr.Dataset:
-    generations = np.arange(allele_freq.shape[1], dtype=np.int32)
-    hosts = np.arange(Nh, dtype=np.int32)
+    num_hosts_by_state = np.asarray(jax.device_get(batch.num_hosts_by_state)).astype(
+        _num_hosts_dtype(batch.num_hosts),
+        copy=False,
+    )
+    _validate_num_hosts_by_state(
+        num_hosts_by_state,
+        batch.num_hosts,
+        context=context,
+    )
+    state_num_mutants = np.asarray(
+        jax.device_get(batch.state_num_mutants),
+        dtype=np.uint16,
+    )
+    state_num_alleles = np.asarray(
+        jax.device_get(batch.state_num_alleles),
+        dtype=np.uint16,
+    )
+    parameters = np.asarray(jax.device_get(batch.parameters), dtype=np.float32)
+
     return xr.Dataset(
         data_vars={
-            "allele_freq": (
-                ("simulation", "generation", "host"),
-                allele_freq.astype(np.float32, copy=False),
+            "num_hosts_by_state": (
+                ("simulation", "generation", "state"),
+                num_hosts_by_state,
             ),
             "parameters": (
                 ("simulation", "parameter"),
-                parameters.astype(np.float32, copy=False),
+                parameters,
             ),
         },
         coords={
             "simulation": sample_ids.astype(np.int64, copy=False),
-            "generation": generations,
-            "host": hosts,
-            "parameter": np.asarray(parameter_names, dtype=object),
+            "generation": generation_ids.astype(np.int32, copy=False),
+            "state": np.arange(state_num_mutants.size, dtype=np.int16),
+            "state_num_mutants": ("state", state_num_mutants),
+            "state_num_alleles": ("state", state_num_alleles),
+            "state_allele_freq": (
+                "state",
+                state_num_mutants.astype(np.float32)
+                / state_num_alleles.astype(np.float32),
+            ),
+            "parameter": np.asarray(batch.parameter_names, dtype=object),
         },
         attrs={
             "simulator": "malaria",
-            "Nh": int(Nh),
-            "Q": int(Q),
+            "num_hosts": int(batch.num_hosts),
+            "num_transmitted_alleles": int(batch.num_transmitted_alleles),
             "seed": int(seed),
-            "parameter_names": list(parameter_names),
+            "parameter_names": list(batch.parameter_names),
         },
     )
 
 
-def _write_chunk(
+def _flush_datasets(
+    datasets: list[xr.Dataset],
+    store: Path,
+    group: str,
+    group_num_samples: dict[str, int],
+    output_cfg: DictConfig,
+) -> None:
+    if not datasets:
+        return
+    ds = datasets[0] if len(datasets) == 1 else xr.concat(datasets, dim="simulation")
+    append = group_num_samples.get(group, 0) > 0
+    _write_dataset(ds, store, group, append=append, output_cfg=output_cfg)
+    group_num_samples[group] = group_num_samples.get(group, 0) + ds.sizes["simulation"]
+
+
+def _write_dataset(
     ds: xr.Dataset,
     store: Path,
     group: str,
     append: bool,
-    sample_chunk: int,
+    output_cfg: DictConfig,
 ) -> None:
-    sample_chunk = min(sample_chunk, ds.sizes["simulation"])
+    chunks = output_cfg.chunks
+    num_simulations_chunk = min(
+        int(chunks.num_simulations),
+        ds.sizes["simulation"],
+    )
+    num_generations_chunk = min(
+        int(chunks.num_generations),
+        ds.sizes["generation"],
+    )
+    num_states_chunk = min(int(chunks.num_states), ds.sizes["state"])
     encoding = {
-        "allele_freq": {
-            "chunks": (sample_chunk, ds.sizes["generation"], ds.sizes["host"])
+        "num_hosts_by_state": {
+            "chunks": (
+                num_simulations_chunk,
+                num_generations_chunk,
+                num_states_chunk,
+            ),
         },
-        "parameters": {"chunks": (sample_chunk, ds.sizes["parameter"])},
+        "parameters": {"chunks": (num_simulations_chunk, ds.sizes["parameter"])},
     }
-    kwargs = {"store": store, "group": group, "mode": "a", "encoding": encoding}
+    compressors = _compressors(output_cfg)
+    if compressors is not None:
+        for variable_encoding in encoding.values():
+            variable_encoding["compressors"] = compressors
+    kwargs = {
+        "store": store,
+        "group": group,
+        "mode": "a",
+        "consolidated": False,
+        "write_empty_chunks": bool(output_cfg.write_empty_chunks),
+    }
     if append:
         kwargs["append_dim"] = "simulation"
+    else:
+        kwargs["encoding"] = encoding
     ds.to_zarr(**kwargs)
+
+
+def _compressors(output_cfg: DictConfig) -> list[BloscCodec] | None:
+    compression = output_cfg.compression
+    if not compression.enabled:
+        return None
+    if compression.codec != "blosc":
+        raise ValueError(f"Unsupported compression codec: {compression.codec}")
+    return [
+        BloscCodec(
+            cname=compression.cname,
+            clevel=int(compression.clevel),
+            shuffle=compression.shuffle,
+        )
+    ]
 
 
 def _write_root_attrs(
     store: Path,
     cfg: DictConfig,
     groups: list[dict],
-    param_names: tuple[str, ...],
 ) -> None:
     root = zarr.open_group(str(store), mode="a")
     root.attrs.update(
         {
             "simulator": "malaria",
-            "config": json.dumps(OmegaConf.to_container(cfg, resolve=True)),
-            "groups": json.dumps(groups),
-            "parameter_names": json.dumps(list(param_names)),
+            "config": OmegaConf.to_container(cfg, resolve=True),
+            "groups": groups,
         }
     )
 
