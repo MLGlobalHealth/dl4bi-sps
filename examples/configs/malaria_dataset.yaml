@@ -10,6 +10,7 @@ priors:
       values:
         - 1024
         - 2048
+        - 4096
   num_transmitted_alleles:
     dist: randint
     kwargs:
