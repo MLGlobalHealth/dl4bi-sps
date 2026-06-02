@@ -102,6 +102,30 @@ def exponential(
     return 1 / lam * random.exponential(rng, shape)
 
 
+def loguniform(
+    rng: Array,
+    minval: float,
+    maxval: float,
+    shape: Sequence[int],
+) -> Array:
+    r"""Sample from a log-uniform distribution.
+
+    $$
+    \log X \sim \operatorname{Uniform}(\log a, \log b)
+    $$
+
+    Args:
+        rng: Pseudo-random key from `jax.random`.
+        minval: Lower positive bound.
+        maxval: Upper positive bound.
+        shape: Output shape of the samples.
+
+    Returns:
+        Sample array with shape `shape`.
+    """
+    return jnp.exp(random.uniform(rng, shape, minval=jnp.log(minval), maxval=jnp.log(maxval)))
+
+
 # JAX doesn't have a rate parameterized gamma
 # https://jax.readthedocs.io/en/latest/_autosummary/jax.random.gamma.html
 def gamma(
@@ -171,3 +195,23 @@ def fixed(
         Constant array with shape `shape`.
     """
     return jnp.full(shape, value)
+
+
+def choice(
+    rng: Array,
+    values: Sequence[float],
+    shape: Sequence[int],
+) -> Array:
+    """Sample uniformly from a finite list of values.
+
+    Args:
+        rng: Pseudo-random key from `jax.random`.
+        values: Candidate values to sample from.
+        shape: Output shape of the samples.
+
+    Returns:
+        Sample array with shape `shape`.
+    """
+    values = jnp.asarray(values)
+    idx = random.randint(rng, shape, minval=0, maxval=len(values))
+    return values[idx]

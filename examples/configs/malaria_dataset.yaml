@@ -1,0 +1,52 @@
+seed: 42
+num_generations: 512
+include_initial: false
+batch_size: 256
+num_chunks: 10
+
+priors:
+  Nh:
+    dist: choice
+    kwargs:
+      values:
+        - 1024
+        - 2048
+  Q:
+    dist: randint
+    kwargs:
+      minval: 1
+      maxval: 11
+  chi:
+    dist: uniform
+    kwargs:
+      minval: 0.0
+      maxval: 1.0
+  mu:
+    dist: loguniform
+    kwargs:
+      minval: 1.0e-9
+      maxval: 1.0e-7
+  sw:
+    dist: uniform
+    kwargs:
+      minval: -0.999
+      maxval: 0.0
+  st:
+    dist: uniform
+    kwargs:
+      minval: 0.0
+      maxval: 1.0
+  p_init:
+    dist: uniform
+    kwargs:
+      minval: 0.0
+      maxval: 1.0
+
+output:
+  store: outputs/malaria.zarr
+  overwrite: true
+  sample_chunk: 256
+
+hydra:
+  job:
+    chdir: false
