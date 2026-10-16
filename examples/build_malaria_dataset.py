@@ -22,12 +22,13 @@ from dl4bi_sps.priors import Prior
 class MalariaBatchSpec:
     batch_idx: int
     rng: Array
-    num_hosts: int
     num_transmitted_alleles: int
+    mu: float
+    p_init: float
 
     @property
     def group(self) -> str:
-        return _shape_group(self.num_hosts, self.num_transmitted_alleles)
+        return _shape_group(self.num_transmitted_alleles)
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="malaria_dataset")
@@ -80,8 +81,9 @@ def main(cfg: DictConfig) -> None:
                 group_records.append(
                     {
                         "group": spec.group,
-                        "num_hosts": spec.num_hosts,
                         "num_transmitted_alleles": spec.num_transmitted_alleles,
+                        "batch_mu": spec.mu,
+                        "batch_p_init": spec.p_init,
                         "batch_idx": int(spec.batch_idx),
                         "sample_start": int(sample_ids[0]),
                         "sample_stop": int(sample_ids[-1]) + 1,
@@ -113,24 +115,24 @@ def _sample_batch_specs(
     rng: Array,
     num_batches: int,
 ) -> list[MalariaBatchSpec]:
-    """Sample all batch shapes first so same-shape batches run together."""
+    """Sample all batch parameters first so same-shape batches run together."""
     specs = []
     for batch_idx in range(num_batches):
-        rng, rng_shape = random.split(rng)
-        num_hosts, num_transmitted_alleles = simulator.sample_shape(rng_shape)
+        rng, rng_batch_params = random.split(rng)
+        num_transmitted_alleles, mu, p_init = simulator.sample_batch_params(
+            rng_batch_params
+        )
         rng, rng_batch = random.split(rng)
         specs.append(
             MalariaBatchSpec(
                 batch_idx=batch_idx,
                 rng=rng_batch,
-                num_hosts=num_hosts,
                 num_transmitted_alleles=num_transmitted_alleles,
+                mu=mu,
+                p_init=p_init,
             )
         )
-    return sorted(
-        specs,
-        key=lambda spec: (spec.num_hosts, spec.num_transmitted_alleles),
-    )
+    return sorted(specs, key=lambda spec: spec.num_transmitted_alleles)
 
 
 def _chunks(items: list[MalariaBatchSpec], size: int) -> list[list[MalariaBatchSpec]]:
@@ -152,8 +154,9 @@ def _simulate_dataset(
         spec.rng,
         num_generations=num_generations,
         num_simulations=num_simulations,
-        num_hosts=spec.num_hosts,
         num_transmitted_alleles=spec.num_transmitted_alleles,
+        mu=spec.mu,
+        p_init=spec.p_init,
     )
     ds = make_histogram_dataset(
         batch,
@@ -184,11 +187,8 @@ def _prior_from_config(cfg: DictConfig) -> Prior:
     return Prior(cfg.dist, dict(kwargs))
 
 
-def _shape_group(num_hosts: int, num_transmitted_alleles: int) -> str:
-    return (
-        f"num_hosts={int(num_hosts)}/"
-        f"num_transmitted_alleles={int(num_transmitted_alleles)}"
-    )
+def _shape_group(num_transmitted_alleles: int) -> str:
+    return f"num_transmitted_alleles={int(num_transmitted_alleles)}"
 
 
 def _num_hosts_dtype(num_hosts: int) -> np.dtype:
@@ -199,18 +199,22 @@ def _num_hosts_dtype(num_hosts: int) -> np.dtype:
 
 def _validate_num_hosts_by_state(
     num_hosts_by_state: np.ndarray,
-    num_hosts: int,
+    expected_num_hosts: np.ndarray,
     context: str = "",
 ) -> None:
     observed_num_hosts = num_hosts_by_state.sum(axis=-1)
-    if np.all(observed_num_hosts == num_hosts):
+    expected = expected_num_hosts[:, None]
+    if np.all(observed_num_hosts == expected):
         return
     observed_min = int(np.min(observed_num_hosts))
     observed_max = int(np.max(observed_num_hosts))
+    expected_min = int(np.min(expected_num_hosts))
+    expected_max = int(np.max(expected_num_hosts))
     suffix = f" {context}" if context else ""
     raise ValueError(
-        f"Host histogram counts do not sum to num_hosts={num_hosts}{suffix}: "
-        f"observed [{observed_min}, {observed_max}]."
+        "Host histogram counts do not match per-simulation num_hosts"
+        f"{suffix}: observed [{observed_min}, {observed_max}], "
+        f"expected [{expected_min}, {expected_max}]."
     )
 
 
@@ -221,13 +225,16 @@ def make_histogram_dataset(
     seed: int,
     context: str = "",
 ) -> xr.Dataset:
+    parameters = np.asarray(jax.device_get(batch.parameters), dtype=np.float32)
+    expected_num_hosts = parameters[..., 0].astype(np.int64, copy=False)
+    max_num_hosts = int(expected_num_hosts.max())
     num_hosts_by_state = np.asarray(jax.device_get(batch.num_hosts_by_state)).astype(
-        _num_hosts_dtype(batch.num_hosts),
+        _num_hosts_dtype(max_num_hosts),
         copy=False,
     )
     _validate_num_hosts_by_state(
         num_hosts_by_state,
-        batch.num_hosts,
+        expected_num_hosts,
         context=context,
     )
     state_num_mutants = np.asarray(
@@ -238,7 +245,6 @@ def make_histogram_dataset(
         jax.device_get(batch.state_num_alleles),
         dtype=np.uint16,
     )
-    parameters = np.asarray(jax.device_get(batch.parameters), dtype=np.float32)
 
     return xr.Dataset(
         data_vars={
@@ -266,8 +272,10 @@ def make_histogram_dataset(
         },
         attrs={
             "simulator": "malaria",
-            "num_hosts": int(batch.num_hosts),
             "num_transmitted_alleles": int(batch.num_transmitted_alleles),
+            "batch_mu": float(batch.batch_mu),
+            "batch_p_init": float(batch.batch_p_init),
+            "max_num_hosts": max_num_hosts,
             "seed": int(seed),
             "parameter_names": list(batch.parameter_names),
         },

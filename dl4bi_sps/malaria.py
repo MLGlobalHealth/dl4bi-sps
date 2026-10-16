@@ -19,6 +19,7 @@ class MalariaHistogramState:
     sw: Array
     st: Array
     p_init: Array
+    num_hosts: Array
     num_hosts_by_state: Array
     state_num_mutants: Array
     state_num_alleles: Array
@@ -36,15 +37,14 @@ class MalariaHistogramState:
             "p_init",
         )
 
-    def parameter_matrix(self, num_hosts: int) -> tuple[Array, tuple[str, ...]]:
+    def parameter_matrix(self) -> tuple[Array, tuple[str, ...]]:
         """Return sampled parameters as `[num_simulations, parameter]` rows."""
-        num_simulations = self.chi.shape[0]
         return (
             jnp.stack(
                 (
-                    jnp.full((num_simulations,), num_hosts, dtype=jnp.float32),
+                    self.num_hosts.astype(jnp.float32),
                     jnp.full(
-                        (num_simulations,),
+                        (self.chi.shape[0],),
                         self.num_transmitted_alleles,
                         dtype=jnp.float32,
                     ),
@@ -69,8 +69,9 @@ class MalariaSimulationBatch:
     state_num_alleles: Array
     parameters: Array
     parameter_names: tuple[str, ...]
-    num_hosts: int
     num_transmitted_alleles: int
+    batch_mu: float
+    batch_p_init: float
 
 jax.tree_util.register_pytree_node(
     MalariaHistogramState,
@@ -81,6 +82,7 @@ jax.tree_util.register_pytree_node(
             d.sw,
             d.st,
             d.p_init,
+            d.num_hosts,
             d.num_hosts_by_state,
             d.state_num_mutants,
             d.state_num_alleles,
@@ -116,43 +118,45 @@ class MalariaTransmission:
     st: Prior = Prior("uniform", {"minval": 0.0, "maxval": 1.0})
     p_init: Prior = Prior("uniform", {"minval": 0.0, "maxval": 1.0})
 
-    def sample_shape(self, rng: Array) -> tuple[int, int]:
-        """Sample static `(num_hosts, num_transmitted_alleles)` values."""
-        rng_num_hosts, rng_num_transmitted_alleles = random.split(rng)
-        num_hosts = int(self.num_hosts.sample(rng_num_hosts, (1,))[0])
+    def sample_batch_params(self, rng: Array) -> tuple[int, float, float]:
+        """Sample batch-level `(num_transmitted_alleles, mu, p_init)` values."""
+        rng_q, rng_mu, rng_p_init = random.split(rng, 3)
         num_transmitted_alleles = int(
-            self.num_transmitted_alleles.sample(rng_num_transmitted_alleles, (1,))[0]
+            self.num_transmitted_alleles.sample(rng_q, (1,))[0]
         )
-        return num_hosts, num_transmitted_alleles
+        mu = float(self.mu.sample(rng_mu, (1,))[0])
+        p_init = float(self.p_init.sample(rng_p_init, (1,))[0])
+        return num_transmitted_alleles, mu, p_init
 
     def initial_state(
         self,
         rng: Array,
         num_simulations: int,
-        num_hosts: int,
         num_transmitted_alleles: int,
+        mu: float,
+        p_init: float,
     ) -> MalariaHistogramState:
-        """Sample parameters and initialise founding host-state counts."""
-        if num_hosts < 2:
-            raise ValueError(
-                "num_hosts must be at least 2 when superinfection is possible."
-            )
+        """Sample per-simulation parameters and initialise founding host-state counts."""
         if num_transmitted_alleles < 1:
             raise ValueError("num_transmitted_alleles must be at least 1.")
 
-        rng_chi, rng_mu, rng_sw, rng_st, rng_init, rng_founder = random.split(rng, 6)
+        rng_num_hosts, rng_chi, rng_sw, rng_st, rng_founder = random.split(rng, 5)
+        num_hosts = self.num_hosts.sample(rng_num_hosts, (num_simulations,)).astype(
+            jnp.int32
+        )
+        num_hosts = jnp.maximum(num_hosts, 2)
         chi = self.chi.sample(rng_chi, (num_simulations,)).astype(jnp.float32)
-        mu = self.mu.sample(rng_mu, (num_simulations,)).astype(jnp.float32)
         sw = self.sw.sample(rng_sw, (num_simulations,)).astype(jnp.float32)
         st = self.st.sample(rng_st, (num_simulations,)).astype(jnp.float32)
-        p_init = self.p_init.sample(rng_init, (num_simulations,)).astype(jnp.float32)
+        mu_arr = jnp.full((num_simulations,), mu, dtype=jnp.float32)
+        p_init_arr = jnp.full((num_simulations,), p_init, dtype=jnp.float32)
 
         state_num_mutants, state_num_alleles = _host_state_table_jax(
             num_transmitted_alleles
         )
         founder_probs = jnp.concatenate(
             [
-                _binomial_pmf(num_transmitted_alleles, p_init),
+                _binomial_pmf(num_transmitted_alleles, p_init_arr),
                 jnp.zeros((num_simulations, 2 * num_transmitted_alleles + 1)),
             ],
             axis=-1,
@@ -164,10 +168,11 @@ class MalariaTransmission:
         )
         return MalariaHistogramState(
             chi,
-            mu,
+            mu_arr,
             sw,
             st,
-            p_init,
+            p_init_arr,
+            num_hosts,
             num_hosts_by_state,
             state_num_mutants,
             state_num_alleles,
@@ -179,10 +184,15 @@ class MalariaTransmission:
         rng: Array,
         num_generations: int,
         num_simulations: int,
-        num_hosts: int,
         num_transmitted_alleles: int,
+        mu: float,
+        p_init: float,
     ) -> tuple[Array, Array, Array, MalariaHistogramState]:
         """Simulate host-state count trajectories.
+
+        Batch-level parameters ``num_transmitted_alleles``, ``mu``, and ``p_init`` are
+        shared across all simulations. ``chi``, ``num_hosts``, ``sw``, and ``st`` are
+        sampled independently per simulation.
 
         Returns:
             Tuple of host-state counts with shape
@@ -196,50 +206,48 @@ class MalariaTransmission:
         state = self.initial_state(
             rng_init,
             num_simulations,
-            num_hosts,
             num_transmitted_alleles,
+            mu,
+            p_init,
         )
-        return _simulate_jitted(
-            rng_sim,
-            state,
-            num_generations,
-            int(num_hosts),
-        )
+        return _simulate_jitted(rng_sim, state, num_generations)
 
     def simulate_batch(
         self,
         rng: Array,
         num_generations: int,
         num_simulations: int,
-        num_hosts: int,
         num_transmitted_alleles: int,
+        mu: float,
+        p_init: float,
     ) -> MalariaSimulationBatch:
         """Simulate and package a complete static-shape histogram batch."""
         num_hosts_by_state, state_num_mutants, state_num_alleles, state = self.simulate(
             rng,
             num_generations=num_generations,
             num_simulations=num_simulations,
-            num_hosts=num_hosts,
             num_transmitted_alleles=num_transmitted_alleles,
+            mu=mu,
+            p_init=p_init,
         )
-        parameters, parameter_names = state.parameter_matrix(num_hosts)
+        parameters, parameter_names = state.parameter_matrix()
         return MalariaSimulationBatch(
             num_hosts_by_state=num_hosts_by_state,
             state_num_mutants=state_num_mutants,
             state_num_alleles=state_num_alleles,
             parameters=parameters,
             parameter_names=parameter_names,
-            num_hosts=int(num_hosts),
             num_transmitted_alleles=int(num_transmitted_alleles),
+            batch_mu=float(mu),
+            batch_p_init=float(p_init),
         )
 
 
-@partial(jit, static_argnames=("num_generations", "num_hosts"))
+@partial(jit, static_argnames=("num_generations",))
 def _simulate_jitted(
     rng: Array,
     state: MalariaHistogramState,
     num_generations: int,
-    num_hosts: int,
 ) -> tuple[Array, Array, Array, MalariaHistogramState]:
     """Run the jitted simulator loop."""
     if num_generations == 1:
@@ -253,7 +261,7 @@ def _simulate_jitted(
     rng_steps = random.split(rng, num_generations - 1)
 
     def step(carry: MalariaHistogramState, rng_step: Array):
-        next_state = _transmit_generation(rng_step, carry, num_hosts)
+        next_state = _transmit_generation(rng_step, carry)
         return next_state, next_state.num_hosts_by_state
 
     final_state, histogram_steps = lax.scan(step, state, rng_steps)
@@ -273,12 +281,11 @@ def _simulate_jitted(
 def _transmit_generation(
     rng: Array,
     state: MalariaHistogramState,
-    num_hosts: int,
 ) -> MalariaHistogramState:
     state_probs = _next_state_probs(state)
     num_hosts_by_state = _sample_multinomial_counts(
         rng,
-        num_hosts,
+        state.num_hosts,
         state_probs,
     )
     return MalariaHistogramState(
@@ -287,6 +294,7 @@ def _transmit_generation(
         state.sw,
         state.st,
         state.p_init,
+        state.num_hosts,
         num_hosts_by_state,
         state.state_num_mutants,
         state.state_num_alleles,
@@ -339,7 +347,7 @@ def _next_state_probs(state: MalariaHistogramState) -> Array:
     return state_probs / jnp.sum(state_probs, axis=-1, keepdims=True)
 
 
-def _sample_multinomial_counts(rng: Array, num_trials: int, probs: Array) -> Array:
+def _sample_multinomial_counts(rng: Array, num_trials: Array, probs: Array) -> Array:
     """Sample multinomial counts with exact row sums.
 
     Conditional binomial draws are a factorization of multinomial sampling that
@@ -348,12 +356,15 @@ def _sample_multinomial_counts(rng: Array, num_trials: int, probs: Array) -> Arr
     """
     probs = probs / jnp.sum(probs, axis=-1, keepdims=True)
     num_categories = probs.shape[-1]
+    num_trials = jnp.asarray(num_trials, dtype=jnp.float32)
+    if num_trials.shape != probs.shape[:-1]:
+        num_trials = jnp.broadcast_to(num_trials, probs.shape[:-1])
     if num_categories == 1:
-        return jnp.full((*probs.shape[:-1], 1), num_trials, dtype=jnp.int32)
+        return num_trials.astype(jnp.int32)[..., None]
 
     keys = random.split(rng, num_categories - 1)
     category_probs = jnp.moveaxis(probs[..., :-1], -1, 0)
-    initial_remaining_count = jnp.full(probs.shape[:-1], num_trials, dtype=jnp.float32)
+    initial_remaining_count = num_trials
     initial_remaining_prob = jnp.ones(probs.shape[:-1], dtype=jnp.float32)
 
     def step(carry, inputs):

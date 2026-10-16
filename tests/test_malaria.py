@@ -15,15 +15,14 @@ from dl4bi_sps.priors import Prior
 def test_malaria_shapes_and_bounds():
     """Verify malaria histogram trajectories have expected shape and bounds."""
     rng = random.key(42)
-    sim = MalariaTransmission()
-    num_hosts_by_state, state_num_mutants, state_num_alleles, state = (
-        sim.simulate(
-            rng,
-            num_generations=5,
-            num_simulations=4,
-            num_hosts=16,
-            num_transmitted_alleles=2,
-        )
+    sim = MalariaTransmission(num_hosts=Prior("fixed", {"value": 16}))
+    num_hosts_by_state, state_num_mutants, state_num_alleles, state = sim.simulate(
+        rng,
+        num_generations=5,
+        num_simulations=4,
+        num_transmitted_alleles=2,
+        mu=1e-8,
+        p_init=0.1,
     )
 
     num_hosts_by_state = np.asarray(num_hosts_by_state)
@@ -41,20 +40,22 @@ def test_malaria_shapes_and_bounds():
 def test_malaria_deterministic_repeat():
     """The same key and configuration should reproduce identical histograms."""
     rng = random.key(123)
-    sim = MalariaTransmission()
+    sim = MalariaTransmission(num_hosts=Prior("fixed", {"value": 12}))
     hist_a, _, _, state_a = sim.simulate(
         rng,
         num_generations=4,
         num_simulations=3,
-        num_hosts=12,
         num_transmitted_alleles=2,
+        mu=1e-8,
+        p_init=0.2,
     )
     hist_b, _, _, state_b = sim.simulate(
         rng,
         num_generations=4,
         num_simulations=3,
-        num_hosts=12,
         num_transmitted_alleles=2,
+        mu=1e-8,
+        p_init=0.2,
     )
 
     np.testing.assert_array_equal(np.asarray(hist_a), np.asarray(hist_b))
@@ -68,20 +69,22 @@ def test_malaria_always_starts_with_initial_generation():
     """The first returned generation is the founding histogram."""
     rng = random.key(7)
     rng_init, _ = random.split(rng)
-    sim = MalariaTransmission()
+    sim = MalariaTransmission(num_hosts=Prior("fixed", {"value": 8}))
     initial = sim.initial_state(
         rng_init,
         num_simulations=2,
-        num_hosts=8,
         num_transmitted_alleles=2,
+        mu=1e-8,
+        p_init=0.5,
     )
 
     num_hosts_by_state, _, _, state = sim.simulate(
         rng,
         num_generations=1,
         num_simulations=2,
-        num_hosts=8,
         num_transmitted_alleles=2,
+        mu=1e-8,
+        p_init=0.5,
     )
 
     np.testing.assert_array_equal(
@@ -97,20 +100,20 @@ def test_malaria_always_starts_with_initial_generation():
 def test_malaria_fixed_priors_in_parameters():
     """Fixed priors should be reflected in the state parameter matrix."""
     sim = MalariaTransmission(
+        num_hosts=Prior("fixed", {"value": 10}),
         chi=Prior("fixed", {"value": 0.25}),
-        mu=Prior("fixed", {"value": 1e-8}),
         sw=Prior("fixed", {"value": -0.1}),
         st=Prior("fixed", {"value": 0.2}),
-        p_init=Prior("fixed", {"value": 0.3}),
     )
     _, _, _, state = sim.simulate(
         random.key(0),
         num_generations=2,
         num_simulations=5,
-        num_hosts=10,
         num_transmitted_alleles=3,
+        mu=1e-8,
+        p_init=0.3,
     )
-    params_jax, param_names = state.parameter_matrix(10)
+    params_jax, param_names = state.parameter_matrix()
     params = np.asarray(params_jax)
 
     assert param_names == (
@@ -132,13 +135,41 @@ def test_malaria_fixed_priors_in_parameters():
     np.testing.assert_allclose(params[:, 6], 0.3)
 
 
-def test_malaria_shape_sampling_uses_choice_prior():
-    """Static host counts can be sampled from a finite configured set."""
+def test_malaria_num_hosts_sampling_uses_choice_prior():
+    """Per-simulation host counts can be sampled from a finite configured set."""
     sim = MalariaTransmission(num_hosts=Prior("choice", {"values": [1024, 2048]}))
-    samples = {sim.sample_shape(random.key(seed))[0] for seed in range(16)}
+    state = sim.initial_state(
+        random.key(0),
+        num_simulations=32,
+        num_transmitted_alleles=4,
+        mu=1e-8,
+        p_init=0.1,
+    )
+    samples = set(np.asarray(state.num_hosts).tolist())
 
     assert samples <= {1024, 2048}
     assert samples
+
+
+def test_malaria_batch_params_sampling():
+    """Batch-level Q, mu, and p_init are sampled once per batch."""
+    sim = MalariaTransmission(
+        num_transmitted_alleles=Prior("choice", {"values": [2, 4]}),
+        mu=Prior("choice", {"values": [1e-9, 1e-8]}),
+        p_init=Prior("choice", {"values": [0.1, 0.5]}),
+    )
+    q_values = set()
+    mu_values = set()
+    p_init_values = set()
+    for seed in range(16):
+        q, mu, p_init = sim.sample_batch_params(random.key(seed))
+        q_values.add(q)
+        mu_values.add(mu)
+        p_init_values.add(p_init)
+
+    assert q_values <= {2, 4}
+    assert all(np.isclose(mu, [1e-9, 1e-8]).any() for mu in mu_values)
+    assert all(np.isclose(p_init, [0.1, 0.5]).any() for p_init in p_init_values)
 
 
 def test_malaria_zarr_smoke(tmp_path):
@@ -147,16 +178,17 @@ def test_malaria_zarr_smoke(tmp_path):
     pytest.importorskip("zarr")
     from examples.build_malaria_dataset import make_histogram_dataset
 
-    sim = MalariaTransmission()
+    sim = MalariaTransmission(num_hosts=Prior("fixed", {"value": 8}))
     batch = sim.simulate_batch(
         random.key(1),
         num_generations=3,
         num_simulations=2,
-        num_hosts=8,
         num_transmitted_alleles=2,
+        mu=1e-8,
+        p_init=0.1,
     )
     store = tmp_path / "malaria.zarr"
-    group = "num_hosts=8/num_transmitted_alleles=2"
+    group = "num_transmitted_alleles=2"
 
     ds = make_histogram_dataset(
         batch,
@@ -174,29 +206,28 @@ def test_malaria_zarr_smoke(tmp_path):
         opened["num_hosts_by_state"].sum("state").values,
         np.full((2, 3), 8, dtype=np.uint16),
     )
+    num_hosts = opened["parameters"].sel(parameter="num_hosts").values
     allele_freq = (
         opened["num_hosts_by_state"] * opened["state_allele_freq"]
-    ).sum("state") / opened.attrs["num_hosts"]
+    ).sum("state") / num_hosts[:, None]
     assert allele_freq.shape == (2, 3)
 
 
 def test_malaria_histogram_first_generation_matches_founder_distribution():
     """The first histogram generation should represent the founding population."""
     sim = MalariaTransmission(
+        num_hosts=Prior("fixed", {"value": 256}),
         chi=Prior("fixed", {"value": 0.0}),
-        mu=Prior("fixed", {"value": 0.0}),
         sw=Prior("fixed", {"value": 0.0}),
         st=Prior("fixed", {"value": 0.0}),
-        p_init=Prior("fixed", {"value": 0.25}),
     )
-    num_hosts_by_state, _, _, _ = (
-        sim.simulate(
-            random.key(1),
-            num_generations=1,
-            num_simulations=256,
-            num_hosts=256,
-            num_transmitted_alleles=2,
-        )
+    num_hosts_by_state, _, _, _ = sim.simulate(
+        random.key(1),
+        num_generations=1,
+        num_simulations=256,
+        num_transmitted_alleles=2,
+        mu=0.0,
+        p_init=0.25,
     )
 
     observed = np.asarray(num_hosts_by_state[:, 0, :]).mean(axis=0) / 256
@@ -233,7 +264,7 @@ def test_malaria_zarr_append_reuses_existing_encoding(tmp_path):
         seed=0,
     )
     store = tmp_path / "malaria.zarr"
-    group = "num_hosts=8/num_transmitted_alleles=2"
+    group = "num_transmitted_alleles=2"
     output_cfg = OmegaConf.create(
         {
             "chunks": {
@@ -263,9 +294,10 @@ def test_malaria_zarr_append_reuses_existing_encoding(tmp_path):
         opened["num_hosts_by_state"].sum("state").values,
         np.full((2, 3), 8, dtype=np.uint16),
     )
+    num_hosts = opened["parameters"].sel(parameter="num_hosts").values
     allele_freq = (
         opened["num_hosts_by_state"] * opened["state_allele_freq"]
-    ).sum("state") / opened.attrs["num_hosts"]
+    ).sum("state") / num_hosts[:, None]
     assert allele_freq.shape == (2, 3)
 
 
@@ -283,6 +315,7 @@ def _batch_from_counts(
             dtype=np.float32,
         ),
         parameter_names=MalariaHistogramState.parameter_names(),
-        num_hosts=8,
         num_transmitted_alleles=2,
+        batch_mu=1e-8,
+        batch_p_init=0.3,
     )
